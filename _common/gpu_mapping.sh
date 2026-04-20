@@ -12,6 +12,9 @@ GPU_MAPPINGS=(
     "GTX 1080 Ti|02-test-quadro-p5000-16gb.sh"
     "Quadro RTX 5000|03-test-quadro-rtx5000-16gb.sh"
     "Tesla T4|03-test-quadro-rtx5000-16gb.sh"
+    "RTX 2080 Ti|03-test-quadro-rtx5000-16gb.sh"
+    "Quadro RTX 6000|03-test-quadro-rtx5000-16gb.sh"
+    "Titan RTX|03-test-quadro-rtx5000-16gb.sh"
     "RTX 3090|06-test-rtx3090-24gb.sh"
     "V100.*32|08-test-v100-32gb.sh"
 )

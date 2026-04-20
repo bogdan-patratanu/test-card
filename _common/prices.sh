@@ -19,10 +19,11 @@ PRICES_quadro_p5000_16gb__purchase=380
 PRICES_quadro_p5000_16gb__vast_hourly=0.10  # surogat Tesla P40 24GB pe Vast
 PRICES_quadro_p5000_16gb__source="OLX second-hand (range \$217-518)"
 
-# Quadro RTX 5000 16GB - n/a recent pe OLX. Pret estimativ international ~400 USD
-PRICES_quadro_rtx5000_16gb__purchase=400
-PRICES_quadro_rtx5000_16gb__vast_hourly=0.08  # surogat Tesla T4 16GB pe Vast
-PRICES_quadro_rtx5000_16gb__source="estimat international (n/a recent OLX)"
+# Quadro RTX 5000 16GB - GASIT pe OLX Bucuresti la 1500 lei = ~$346 USD (vendor "GodLike")
+# https://www.olx.ro/d/oferta/placa-video-nvidia-16gb-gddr6-IDke7aQ.html
+PRICES_quadro_rtx5000_16gb__purchase=346
+PRICES_quadro_rtx5000_16gb__vast_hourly=0.08  # T4/2080Ti/RTX6000 ~similar pe Vast
+PRICES_quadro_rtx5000_16gb__source="OLX Bucuresti 1500 lei (GodLike, Apr 2026)"
 
 # RTX 3090 24GB - cel mai bun deal OLX la momentul cercetarii
 PRICES_rtx3090_24gb__purchase=760
