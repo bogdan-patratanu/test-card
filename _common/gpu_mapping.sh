@@ -3,21 +3,23 @@
 # Folosit de run.sh pentru auto-detect si dispatch.
 # =============================================================================
 
-# Format: "regex|script_filename"
+# Format: "regex@@@script_filename" (separator @@@ pentru a nu intra in conflict cu | din regex)
 # Ordinea conteaza: prima potrivire castiga.
 GPU_MAPPINGS=(
-    "RTX 5060 Ti|01-test-rtx5060ti-16gb.sh"
+    "RTX 5060 Ti@@@01-test-rtx5060ti-16gb.sh"
     # P5000 ca TARGET e SKIP. Daca apare pe Vast, o folosim ca surogat pentru RTX 5000 (mai jos).
-    "Quadro RTX 5000|03-test-quadro-rtx5000-16gb.sh"
-    "Tesla T4|03-test-quadro-rtx5000-16gb.sh"
-    "Quadro P5000|03-test-quadro-rtx5000-16gb.sh"
-    "NVIDIA A2|03-test-quadro-rtx5000-16gb.sh"
-    "RTX A4000|03-test-quadro-rtx5000-16gb.sh"
-    # Surogati pentru RTX 5000 (toate 16GB):
-    #   LOWER:    T4 (~73%) > P5000 (~70%) > A2 (~45%)
-    #   OPTIMIST: A4000 (~120%) - aplica corectie -15..-25% mental pe rezultate
-    "RTX 3090|06-test-rtx3090-24gb.sh"
-    "V100.*32|08-test-v100-32gb.sh"
+    "Quadro RTX 5000@@@03-test-quadro-rtx5000-16gb.sh"
+    "Tesla T4@@@03-test-quadro-rtx5000-16gb.sh"
+    "Quadro P5000@@@03-test-quadro-rtx5000-16gb.sh"
+    "NVIDIA A2($| )@@@03-test-quadro-rtx5000-16gb.sh"
+    "RTX A2000@@@03-test-quadro-rtx5000-16gb.sh"
+    "RTX A4000@@@03-test-quadro-rtx5000-16gb.sh"
+    # Surogati pentru RTX 5000:
+    #   LOWER 16GB: T4 (~73%) > P5000 (~70%) > A2 (~45%)
+    #   LOWER 12GB: A2000 12GB (~70% perf, dar VRAM mai mic -> doar 1 model R1-14B)
+    #   OPTIMIST 16GB: A4000 (~120%) - aplica corectie -15..-25% mental
+    "RTX 3090@@@06-test-rtx3090-24gb.sh"
+    "V100.*32@@@08-test-v100-32gb.sh"
 )
 
 # Returneaza scriptul corespunzator unui nume de GPU sau gol daca nu match
@@ -25,8 +27,8 @@ map_gpu_to_script() {
     local gpu_name="$1"
     local mapping
     for mapping in "${GPU_MAPPINGS[@]}"; do
-        local pattern="${mapping%%|*}"
-        local script="${mapping##*|}"
+        local pattern="${mapping%%@@@*}"
+        local script="${mapping##*@@@}"
         if [[ "$gpu_name" =~ $pattern ]]; then
             echo "$script"
             return 0
@@ -56,13 +58,14 @@ canonical_gpu_slug() {
 
         # Surogati comuni
         *"Tesla T4"*)                                      echo "tesla_t4_16gb"           ;;
-        *"NVIDIA A2"*|*"A2"*)                              echo "nvidia_a2_16gb"          ;;
+        *"NVIDIA A2 "*|"NVIDIA A2")                        echo "nvidia_a2_16gb"          ;;
         *"Quadro RTX 6000"*)                               echo "quadro_rtx6000_24gb"     ;;
         *"RTX 2080 Ti"*)                                   echo "rtx2080ti_11gb"          ;;
         *"Titan RTX"*)                                     echo "titan_rtx_24gb"          ;;
         *"Tesla P40"*)                                     echo "tesla_p40_24gb"          ;;
         *"Tesla P100"*)                                    echo "tesla_p100_16gb"         ;;
         *"GTX 1080 Ti"*)                                   echo "gtx1080ti_11gb"          ;;
+        *"RTX A2000"*)                                     echo "rtx_a2000_${vram_gb}gb"  ;;
         *"RTX A4000"*)                                     echo "rtx_a4000_16gb"          ;;
         *"RTX A5000"*)                                     echo "rtx_a5000_24gb"          ;;
         *"RTX A6000"*)                                     echo "rtx_a6000_48gb"          ;;
@@ -87,6 +90,7 @@ SURROGATE_FOR=(
     "tesla_t4_16gb|quadro_rtx5000_16gb"
     "quadro_p5000_16gb|quadro_rtx5000_16gb"     # P5000 nu se mai testeaza ca target -> doar ca surogat
     "nvidia_a2_16gb|quadro_rtx5000_16gb"
+    "rtx_a2000_12gb|quadro_rtx5000_16gb"        # LOWER perf, dar VRAM 12GB -> doar 1 model
     "rtx_a4000_16gb|quadro_rtx5000_16gb"        # OPTIMIST surogat: ~120% perf vs RTX 5000
 )
 
@@ -105,8 +109,8 @@ list_supported_gpus() {
     local mapping
     local seen=""
     for mapping in "${GPU_MAPPINGS[@]}"; do
-        local pattern="${mapping%%|*}"
-        local script="${mapping##*|}"
+        local pattern="${mapping%%@@@*}"
+        local script="${mapping##*@@@}"
         if [[ ":$seen:" != *":$script:"* ]]; then
             echo "  - $pattern  -> $script"
             seen="$seen:$script"

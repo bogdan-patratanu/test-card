@@ -43,6 +43,8 @@ hr()       { echo "${C_C}=====================================================${
 GPU_SLUG=""           # dirname final = canonical_gpu_slug(DETECTED_GPU, vram)
 RESULTS_DIR=""        # results/<GPU_SLUG>/
 DETECTED_GPU=""       # ce a returnat nvidia-smi --query-gpu=name
+DETECTED_VRAM_GB=0    # VRAM total al GPU-ului real, in GB (rounded)
+EFFECTIVE_VRAM_GB=0   # min(TARGET_VRAM_GB, DETECTED_VRAM_GB) - pentru selectie modele
 PROXY_MODE="false"    # "true" daca rulam pe surogat (DETECTED != target)
 PROXY_FOR=""          # GPU_KEY-ul vizat (dpv business), daca proxy_mode
 RUN_LOG=""            # path catre _run-log.txt
@@ -63,25 +65,37 @@ phase_0_system_info() {
     DETECTED_GPU=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1 | xargs || echo "unknown")
     local detected_vram_mb
     detected_vram_mb=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | xargs || echo 0)
-    local detected_vram_gb=$(( (detected_vram_mb + 512) / 1024 ))   # round to nearest GB
+    DETECTED_VRAM_GB=$(( (detected_vram_mb + 512) / 1024 ))   # round to nearest GB
+
+    # EFFECTIVE_VRAM_GB = ce VRAM avem REAL la dispozitie pentru selectia modelelor.
+    # = min(target, detected). Surogate cu mai putin VRAM (ex: A2000 12GB pentru target
+    # RTX 5000 16GB) ruleaza doar subset-ul de modele care incap.
+    if (( DETECTED_VRAM_GB < TARGET_VRAM_GB )); then
+        EFFECTIVE_VRAM_GB=$DETECTED_VRAM_GB
+    else
+        EFFECTIVE_VRAM_GB=$TARGET_VRAM_GB
+    fi
 
     # Slug-ul = canonical pentru GPU-ul REAL detectat (consistent cu naming-ul
     # vechi pentru cele 5 target-uri, slug nou pentru fiecare surogat).
     # Astfel results/<slug>/ reflecta exact pe ce hardware s-a rulat.
     # Maparea "acest slug = surogat pentru ce target" e in summary.json[target_gpu]
     # si in gpu_mapping.sh::SURROGATE_FOR (fallback static).
-    GPU_SLUG=$(canonical_gpu_slug "$DETECTED_GPU" "$detected_vram_gb")
+    GPU_SLUG=$(canonical_gpu_slug "$DETECTED_GPU" "$DETECTED_VRAM_GB")
 
     RESULTS_DIR="results/$GPU_SLUG"
     mkdir -p "$RESULTS_DIR"
     RUN_LOG="$RESULTS_DIR/_run-log.txt"
 
-    log "Target GPU:    $TARGET_GPU (key: $GPU_KEY)"
-    log "GPU detectat:  ${C_BOLD}$DETECTED_GPU${C_RESET} (~${detected_vram_gb} GB)"
-    log "VRAM target:   ${TARGET_VRAM_GB} GB"
-    log "Results dir:   ${C_BOLD}$RESULTS_DIR${C_RESET}"
+    log "Target GPU:      $TARGET_GPU (key: $GPU_KEY, ${TARGET_VRAM_GB}GB)"
+    log "GPU detectat:    ${C_BOLD}$DETECTED_GPU${C_RESET} (${DETECTED_VRAM_GB}GB)"
+    log "VRAM efectiv:    ${EFFECTIVE_VRAM_GB} GB (folosit pt selectie modele)"
+    log "Results dir:     ${C_BOLD}$RESULTS_DIR${C_RESET}"
     if [[ "$GPU_SLUG" != "$GPU_KEY" ]]; then
-        log_warn "Surogat detectat. Director numit dupa GPU-ul real ($GPU_SLUG); summary.json contine target_gpu=$TARGET_GPU pentru a-l grupa cu target-ul."
+        log_warn "Surogat. Director = GPU-ul real ($GPU_SLUG). summary.json contine target_gpu=$TARGET_GPU."
+    fi
+    if (( DETECTED_VRAM_GB < TARGET_VRAM_GB )); then
+        log_warn "Atentie: GPU surogat are mai putin VRAM (${DETECTED_VRAM_GB}GB) decat target-ul (${TARGET_VRAM_GB}GB) -> doar modelele care incap in ${EFFECTIVE_VRAM_GB}GB se vor rula."
     fi
 
     local sys_txt="$RESULTS_DIR/_system-info.txt"
@@ -269,14 +283,14 @@ EOF
 SELECTED_MODELS=()
 phase_2_select_models() {
     hr
-    log_info "Phase 2: Selectare modele care incap in ${TARGET_VRAM_GB}GB VRAM"
+    log_info "Phase 2: Selectare modele care incap in ${EFFECTIVE_VRAM_GB}GB VRAM (efectiv)"
     hr
 
     SELECTED_MODELS=()
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         SELECTED_MODELS+=("$line")
-    done < <(select_models_for_vram "$TARGET_VRAM_GB")
+    done < <(select_models_for_vram "$EFFECTIVE_VRAM_GB")
 
     log "Modele care vor fi rulate (${#SELECTED_MODELS[@]}):"
     local m
@@ -291,7 +305,7 @@ phase_2_select_models() {
     done
 
     if (( ${#SELECTED_MODELS[@]} == 0 )); then
-        log_err "Nu exista modele care sa incapa in ${TARGET_VRAM_GB}GB. Abandon."
+        log_err "Nu exista modele care sa incapa in ${EFFECTIVE_VRAM_GB}GB. Abandon."
         exit 1
     fi
 }

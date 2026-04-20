@@ -21,8 +21,8 @@ TARGET_VRAM_GB=16
 #     4. RTX A4000 16GB    - GA104 Ampere, ~115-125% perf. Bandwidth identic 448 GB/s,
 #                            dar 72% mai mult FP32 + tensor gen3 + arhitectura mai noua.
 #                            Adaugata din necesitate (T4/P5000/A2 nu sunt disponibile).
-ACCEPTED_GPU_REGEXES=("Quadro RTX 5000" "Tesla T4" "Quadro P5000" "NVIDIA A2" "RTX A4000")
-PROXY_NOTE="RTX 5000 16GB (Turing TU104) nu e pe Vast.ai. Surogati: T4 (~73%, lower) > P5000 (~70%, lower) > A2 (~45%, lower) > A4000 (~120%, OPTIMIST). Daca rulezi pe A4000: RTX 5000 reala va fi cu ~15-25% MAI LENTA decat numerele masurate aici (corectie mentala obligatorie pentru decizia de cumparare)."
+ACCEPTED_GPU_REGEXES=("Quadro RTX 5000" "Tesla T4" "Quadro P5000" "NVIDIA A2($| )" "RTX A2000" "RTX A4000")
+PROXY_NOTE="RTX 5000 16GB (Turing TU104) nu e pe Vast.ai. Surogati: T4 (~73%, lower) > P5000 (~70%, lower) > A2 (~45%, lower) > A2000 12GB (~70%, lower DAR doar 1 model R1-14B incape) > A4000 (~120%, OPTIMIST -> corectie -20% mental). Daca rulezi pe A2000: vei avea date doar pentru deepseek-r1:14b - util ca punct de referinta lower-bound dar incomplet."
 
 source _common/config.sh
 source _common/prices.sh
