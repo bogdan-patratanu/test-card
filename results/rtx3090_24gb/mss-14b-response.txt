@@ -1,0 +1,54 @@
+The data provided is a time series dataset for the cryptocurrency "DOGE" (Dogecoin) with various time intervals: M15 (15 minutes), M30 (30 minutes), H1 (hourly), H4 (4 hours), D1 (daily), W1 (weekly), and M1 (monthly). Each interval contains a series of data points, each representing the open, high, low, and close prices for that time period.
+
+Here's an example breakdown for one of these intervals:
+
+- **M15**:
+  - `2026-04-17 13:15:00`: Open = 114.095, High = 114.106, Low = 114.081, Close = 114.081
+  - `2026-04-17 13:20:00`: Open = 114.081, High = 114.108, Low = 114.072, Close = 114.105
+  - `2026-04-17 13:25:00`: Open = 114.105, High = 114.131, Low = 114.104, Close = 114.122
+  - ... (continues for the entire dataset)
+
+This pattern repeats for each time interval provided.
+
+### Key Points:
+- **Time**: Each data point is timestamped with a specific date and time.
+- **Open Price**: The price at which the asset opened during that period.
+- **High Price**: The highest price reached during that period.
+- **Low Price**: The lowest price reached during that period.
+- **Close Price**: The price at which the asset closed during that period.
+
+### Example of Data for Different Intervals:
+1. **M15 (15 minutes)**: 
+   - `2026-04-17 13:15:00`: Open = 114.095, High = 114.106, Low = 114.081, Close = 114.081
+   - `2026-04-17 13:20:00`: Open = 114.081, High = 114.108, Low = 114.072, Close = 114.105
+
+2. **M30 (30 minutes)**:
+   - `2026-04-17 13:00:00`: Open = 114.098, High = 114.147, Low = 114.095, Close = 114.13
+   - `2026-04-17 13:30:00`: Open = 114.13, High = 114.203, Low = 114.132, Close = 114.155
+
+3. **H1 (Hourly)**:
+   - `2026-04-17 13:00:00`: Open = 114.098, High = 114.147, Low = 114.095, Close = 114.13
+   - `2026-04-17 14:00:00`: Open = 114.137, High = 114.147, Low = 114.093, Close = 114.096
+
+4. **H4 (4 Hours)**:
+   - `2026-04-17 12:00:00`: Open = 114.156, High = 114.238, Low = 114.199, Close = 114.232
+   - `2026-04-17 16:00:00`: Open = 114.239, High = 114.27, Low = 114.168, Close = 114.2
+
+5. **D1 (Daily)**:
+   - `2026-04-17 00:00:00`: Open = 113.983, High = 114.374, Low = 113.832, Close = 114.2
+   - `2026-04-18 00:00:00`: Open = 114.2, High = 114.598, Low = 113.781, Close = 114.4
+
+6. **W1 (Weekly)**:
+   - `2026-04-17 00:00:00`: Open = 113.983, High = 114.598, Low = 113.781, Close = 114.4
+   - `2026-04-24 00:00:00`: Open = 114.4, High = 115.05, Low = 114.039, Close = 114.8
+
+7. **M1 (Monthly)**:
+   - `2026-04-17 00:00:00`: Open = 113.983, High = 115.05, Low = 113.781, Close = 114.8
+   - `2026-05-17 00:00:00`: Open = 114.8, High = 116.29, Low = 114.381, Close = 115.7
+
+This dataset can be used for various purposes such as:
+- **Technical Analysis**: Identifying trends and patterns.
+- **Backtesting Trading Strategies**: Testing the performance of different trading strategies on historical data.
+- **Market Research**: Understanding market behavior over different time frames.
+
+If you need any specific analysis or further breakdown, please let me know!
