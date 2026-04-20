@@ -1,0 +1,15 @@
+{
+  "collected_at": "2026-04-20T14:10:32Z",
+  "target_gpu": "Quadro RTX 5000 16GB",
+  "target_vram_gb": 16,
+  "gpu_key": "quadro_rtx5000_16gb",
+  "detected_gpu": "NVIDIA RTX A4000",
+  "gpu_slug": "rtx_a4000_16gb",
+  "proxy_mode": true,
+  "gpu_total_mb": 16376,
+  "driver_version": "550.107.02",
+  "compute_capability": "8.6",
+  "cpu_model": "AMD Ryzen 5 5600X 6-Core Processor",
+  "cpu_cores": 12,
+  "ram_gb": 46
+}
