@@ -13,9 +13,12 @@ cd "$(dirname "$0")"
 GPU_KEY="quadro_p5000_16gb"
 TARGET_GPU="Quadro P5000 16GB"
 TARGET_VRAM_GB=16
-# Ordinea conteaza: prima e target-ul real, restul sunt surogati
-ACCEPTED_GPU_REGEXES=("Quadro P5000" "Tesla P40" "GTX 1080 Ti")
-PROXY_NOTE="P5000 nu e pe Vast.ai. Surogat preferat: Tesla P40 24GB (Pascal, bandwidth similar). Atentie: rezultatele = lower bound, P5000 reala va fi mai lenta marginal."
+# DECIZIE: P5000 SKIP per cerinta utilizatorului. Pe Vast.ai nu exista niciun GPU Pascal cu
+# 16GB care sa fie LOWER BOUND - toate alternativele (P40 24GB, P100 16GB HBM2, 1080 Ti 11GB)
+# sunt mai puternice macar pe o dimensiune (compute / bandwidth / VRAM) -> rezultate optimiste.
+# Scriptul ramane ca placeholder. Daca P5000 apare vreodata pe Vast, se poate rula cu el.
+ACCEPTED_GPU_REGEXES=("Quadro P5000")
+PROXY_NOTE=""
 
 source _common/config.sh
 source _common/prices.sh

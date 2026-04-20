@@ -80,25 +80,43 @@ In **"Create"** (search bar GPU):
 | GPU vizat (cumparare) | Script | Pe Vast.ai? | Pret cumparare | Vast.ai $/hr aprox |
 |---|---|---|---:|---:|
 | **RTX 5060 Ti 16GB** | [01-test-rtx5060ti-16gb.sh](01-test-rtx5060ti-16gb.sh) | DA - filtreaza `RTX 5060 Ti` | $696 nou eMAG | $0.06 |
-| **Quadro P5000 16GB** | [02-test-quadro-p5000-16gb.sh](02-test-quadro-p5000-16gb.sh) | NU -> SUROGAT: `Tesla P40 24GB` | $217-518 OLX | $0.10 (P40) |
-| **Quadro RTX 5000 16GB** | [03-test-quadro-rtx5000-16gb.sh](03-test-quadro-rtx5000-16gb.sh) | NU -> SUROGATI (in ordinea preferintei): `Tesla T4 16GB` > `RTX 2080 Ti 11GB` > `Quadro RTX 6000 24GB` > `Titan RTX 24GB` | **$346** OLX Bucuresti (1500 lei) | $0.08-0.30 |
+| ~~**Quadro P5000 16GB**~~ ❌ SKIP ca target | [02-test-quadro-p5000-16gb.sh](02-test-quadro-p5000-16gb.sh) | n/a (daca apare pe Vast → folosita ca surogat pentru RTX 5000) | $217-518 OLX | n/a |
+| **Quadro RTX 5000 16GB** | [03-test-quadro-rtx5000-16gb.sh](03-test-quadro-rtx5000-16gb.sh) | NU -> SUROGATI 16GB lower-bound: `Tesla T4` > `Quadro P5000` > `NVIDIA A2` | **$346** OLX Bucuresti (1500 lei) | $0.08-0.12 |
 | **RTX 3090 24GB** | [06-test-rtx3090-24gb.sh](06-test-rtx3090-24gb.sh) | DA - filtreaza `RTX 3090` | $760 OLX Bucuresti | $0.16 |
 | **Tesla V100 32GB** ⭐ | [08-test-v100-32gb.sh](08-test-v100-32gb.sh) | DA - filtreaza `V100-SXM2-32GB` sau `V100-PCIE-32GB` | $860 OLX Snagov | $0.21 |
 
 ⭐ = target principal cerut.
+❌ SKIP = nu se poate testa onest pe Vast.ai (vezi politica surogati de mai jos).
 
-**Surogati:** placile de Quadro NU sunt pe Vast.ai. Folosim *cel mai apropiat datacenter card* ca proxy. Scriptul detecteaza automat ca rulezi pe surogat si marcheaza `proxy_mode: true` in raport.
+### Politica strict LOWER BOUND pentru surogati
 
-Pentru **RTX 5000** in special, T4 e adesea epuizat. In aceasta ordine de preferinta:
+**Regula:** un surogat e VALID doar daca e similar VRAM si compute/bandwidth EGAL SAU MAI MIC decat target-ul. Niciodata mai puternic.
 
-| Surogat | Tip rezultat | Note |
+**De ce:** un surogat optimist (mai puternic) ar arata "merge bine, cumpara!" cand placa reala ar fi mai lenta -> decizie proasta de cumparare. Mai bine fara date decat date care induc in eroare.
+
+**Aplicare la cele 2 placi care nu-s pe Vast:**
+
+| Target | Surogat valid pe Vast? | Decizie |
 |---|---|---|
-| **Tesla T4 16GB** | LOWER BOUND (preferat) | Acelasi chip TU104, mai slab. RTX 5000 reala va fi ~30-40% mai rapida |
-| **RTX 2080 Ti 11GB** | LOWER BOUND partial | TU102 mai puternic dar doar 11GB - 14B Q8 si 32B Q3 vor face OOM, doar R1-14B se va testa |
-| **Quadro RTX 6000 24GB** | OPTIMIST upper bound | TU102 mai puternic + mai mult VRAM - RTX 5000 reala va fi mai lenta |
-| **Titan RTX 24GB** | OPTIMIST upper bound | La fel ca RTX 6000 |
+| **Quadro RTX 5000 16GB** (Turing TU104, 11.15 TF / 448 GB/s) | DA - 3 optiuni strict 16GB + lower (vezi tabelul de mai jos) | TESTAM. Filtru Vast pe oricare din `Tesla T4`, `Quadro P5000`, `NVIDIA A2` |
+| **Quadro P5000 16GB** (Pascal GP104) | NU - toate Pascal-urile pe Vast cu 16GB+ sunt mai puternice macar pe o axa (P40 mai mult VRAM, P100 HBM2 bandwidth dublu, 1080 Ti compute mai mare) | **SKIP** ca target. Daca apare totusi → o folosim ca surogat pentru RTX 5000 |
 
-Pentru **P5000**: surogatul `Tesla P40 24GB` e *un pic optimist* (Pascal datacenter card mai puternic), dar singurul Pascal cu 16GB+ pe Vast. P5000 reala va fi marginal mai lenta.
+#### Surogati 16GB pentru RTX 5000 (toate strict lower bound)
+
+| Surogat | Chip / Gen | FP32 TFLOPS | Bandwidth | % din RTX 5000 | Comentariu |
+|---|---|---:|---:|---:|---|
+| **Tesla T4 16GB** | TU104 Turing | 8.1 | 320 GB/s | ~73% | PREFERAT - acelasi chip ca RTX 5000, doar downclocked |
+| **Quadro P5000 16GB** | GP104 Pascal | 8.87 | 288 GB/s | ~65-70% | Pascal precedenta, GDDR5X mai lent |
+| **NVIDIA A2 16GB** | GA107 Ampere LP | 4.5 | 200 GB/s | ~45% | Foarte conservator - lower bound generos, util daca T4 si P5000 nu sunt disponibile |
+
+Regula: cu cat surogatul e mai slab, cu atat marja de "RTX 5000 reala va fi mai rapida decat ce vezi" e mai mare. T4 ar da estimare apropiata, A2 ar da estimare foarte pesimista.
+
+### Bonus: scenariu 2x RTX 5000 cu NVLink
+
+Daca cumperi 2 bucati de RTX 5000 si le pui in NVLink bridge -> 32GB VRAM pooled. Scriptul actual testeaza doar **single card 16GB** (3 modele: 14B Q8, 32B Q3, R1-14B). Pentru a estima 2x cu NVLink uita-te la rezultatele V100 32GB (toate 6 modele) - dar tine cont ca:
+- RTX 5000 single-card e ~50% din viteza V100 32GB
+- NVLink intre 2 RTX 5000 are overhead (~10-20% pierdere fata de pooling perfect)
+- Estimare grosiera: 2x RTX 5000 NVLink ~ 40-50% din viteza V100 32GB pe modele 32B
 
 ### Pe Vast.ai, fluxul e mereu acelasi:
 
@@ -138,7 +156,7 @@ Filtrarea se face in [_common/model_tiers.sh](_common/model_tiers.sh) (ajustabil
 
 ### Estimari timp benchmark per GPU
 
-- **16GB GPU** (RTX 5060 Ti, P5000, RTX 5000): 3 modele = **~30-60 min**
+- **16GB GPU** (RTX 5060 Ti, RTX 5000 via T4): 3 modele = **~30-60 min**
 - **24GB GPU** (RTX 3090): 6 modele = **~60-120 min**
 - **32GB GPU** (V100 32GB): 6 modele = **~60-120 min**
 
@@ -243,11 +261,11 @@ test-card/
 | GPU | Vast $/hr | Timp estimat | Cost rulare |
 |---|---:|---:|---:|
 | RTX 5060 Ti 16GB | $0.06 | 30-60 min | $0.03-$0.06 |
-| Tesla P40 (proxy P5000) | $0.10 | 30-60 min | $0.05-$0.10 |
-| Surogat RTX 5000 (T4 / 2080 Ti / RTX 6000 / Titan RTX) | $0.08-0.30 | 30-60 min | $0.04-$0.30 |
+| ~~P5000~~ | ~~SKIP~~ | - | $0 |
+| Surogat RTX 5000 (T4 / P5000 / A2 16GB) | $0.08-0.12 | 30-60 min | $0.04-$0.12 |
 | RTX 3090 24GB | $0.16 | 60-120 min | $0.16-$0.32 |
 | Tesla V100 32GB | $0.21 | 60-120 min | $0.21-$0.42 |
-| **TOTAL** | | | **~$0.50-$1.00** |
+| **TOTAL** | | | **~$0.45-$0.90** |
 
 ---
 
@@ -267,8 +285,8 @@ test-card/
 |---|---:|---:|---|---|
 | Tesla V100 SXM2/PCIE | **32GB** | $860 | Snagov | server card, are nevoie de racire externa - target principal |
 | RTX 3090 (Zotac/Asus) | 24GB | $760 | Bucuresti | best raport pret/perf |
-| **Quadro RTX 5000 GDDR6** | **16GB** | **$346** (1500 lei) | Bucuresti Sector 6 | vendor "GodLike" Apr 2026 - [link OLX](https://www.olx.ro/d/oferta/placa-video-nvidia-16gb-gddr6-IDke7aQ.html), Turing TU104 |
-| Quadro P5000 | 16GB | $217-518 | divers | pret variabil mult, atentie OEM |
+| **Quadro RTX 5000 GDDR6** | **16GB** | **$346** (1500 lei) | Bucuresti Sector 6 | vendor "GodLike" Apr 2026 - [link OLX](https://www.olx.ro/d/oferta/placa-video-nvidia-16gb-gddr6-IDke7aQ.html), Turing TU104, **vendor are 2 buc** -> posibil 2x cu NVLink bridge in viitor (32GB pooled) |
+| ~~Quadro P5000~~ | ~~16GB~~ | ~~$217-518~~ | ~~divers~~ | **SKIP** - niciun lower-bound surogat pe Vast.ai |
 
 ---
 
@@ -316,10 +334,10 @@ Scriptul marcheaza `status=OOM` si trece la urmatorul. Modelul respectiv depases
 Editeaza `_common/prices.sh` si push: tot raportul foloseste de aici.
 
 ```bash
-# exemplu: actualizez pretul P5000
-PRICES_quadro_p5000_16gb__purchase=300   # in loc de 380
+# exemplu: actualizez pretul RTX 5000
+PRICES_quadro_rtx5000_16gb__purchase=320   # in loc de 346
 git add _common/prices.sh
-git commit -m "prices: P5000 actualizat la $300"
+git commit -m "prices: RTX 5000 actualizat la \$320"
 git push
 ```
 

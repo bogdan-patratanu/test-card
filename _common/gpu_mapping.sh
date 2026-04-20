@@ -7,14 +7,13 @@
 # Ordinea conteaza: prima potrivire castiga.
 GPU_MAPPINGS=(
     "RTX 5060 Ti|01-test-rtx5060ti-16gb.sh"
-    "Quadro P5000|02-test-quadro-p5000-16gb.sh"
-    "Tesla P40|02-test-quadro-p5000-16gb.sh"
-    "GTX 1080 Ti|02-test-quadro-p5000-16gb.sh"
+    # P5000 ca TARGET e SKIP. Daca apare pe Vast, o folosim ca surogat pentru RTX 5000 (mai jos).
     "Quadro RTX 5000|03-test-quadro-rtx5000-16gb.sh"
     "Tesla T4|03-test-quadro-rtx5000-16gb.sh"
-    "RTX 2080 Ti|03-test-quadro-rtx5000-16gb.sh"
-    "Quadro RTX 6000|03-test-quadro-rtx5000-16gb.sh"
-    "Titan RTX|03-test-quadro-rtx5000-16gb.sh"
+    "Quadro P5000|03-test-quadro-rtx5000-16gb.sh"
+    "NVIDIA A2|03-test-quadro-rtx5000-16gb.sh"
+    # Surogati pentru RTX 5000 (toate strict 16GB + LOWER compute+bw):
+    #   T4 (TU104 ~73%) > P5000 (GP104 ~70%) > A2 (GA107 ~45%, foarte conservator)
     "RTX 3090|06-test-rtx3090-24gb.sh"
     "V100.*32|08-test-v100-32gb.sh"
 )
@@ -30,6 +29,70 @@ map_gpu_to_script() {
             echo "$script"
             return 0
         fi
+    done
+    return 1
+}
+
+# =============================================================================
+# canonical_gpu_slug - Normalizeaza nume nvidia-smi + VRAM intr-un slug consistent
+# folosit ca dirname in results/. Asa fiecare GPU REAL pe care a rulat are
+# directorul lui (nu acoperit de target). Pe target real, slug-ul = GPU_KEY.
+# Pe surogat, slug-ul = canonical pentru hardware-ul real.
+# =============================================================================
+canonical_gpu_slug() {
+    local detected="$1"
+    local vram_gb="$2"
+
+    case "$detected" in
+        # Target-uri exacte ale celor 5 placi cumparabile -> match GPU_KEY pentru consistenta backwards
+        *"V100"*32*|*"V100-SXM2-32GB"*|*"V100-PCIE-32GB"*) echo "v100_32gb"               ;;
+        *"V100"*16*|*"V100-SXM2-16GB"*|*"V100-PCIE-16GB"*) echo "v100_16gb"               ;;
+        *"RTX 5060 Ti"*)                                   echo "rtx5060ti_16gb"          ;;
+        *"RTX 3090"*)                                      echo "rtx3090_24gb"            ;;
+        *"Quadro RTX 5000"*)                               echo "quadro_rtx5000_16gb"     ;;
+        *"Quadro P5000"*)                                  echo "quadro_p5000_16gb"       ;;
+
+        # Surogati comuni
+        *"Tesla T4"*)                                      echo "tesla_t4_16gb"           ;;
+        *"NVIDIA A2"*|*"A2"*)                              echo "nvidia_a2_16gb"          ;;
+        *"Quadro RTX 6000"*)                               echo "quadro_rtx6000_24gb"     ;;
+        *"RTX 2080 Ti"*)                                   echo "rtx2080ti_11gb"          ;;
+        *"Titan RTX"*)                                     echo "titan_rtx_24gb"          ;;
+        *"Tesla P40"*)                                     echo "tesla_p40_24gb"          ;;
+        *"Tesla P100"*)                                    echo "tesla_p100_16gb"         ;;
+        *"GTX 1080 Ti"*)                                   echo "gtx1080ti_11gb"          ;;
+        *"RTX A4000"*)                                     echo "rtx_a4000_16gb"          ;;
+        *"RTX A5000"*)                                     echo "rtx_a5000_24gb"          ;;
+        *"RTX A6000"*)                                     echo "rtx_a6000_48gb"          ;;
+        *"RTX 4090"*)                                      echo "rtx4090_24gb"            ;;
+        *"L4"*)                                            echo "l4_24gb"                 ;;
+
+        # Fallback: slugify nume + vram
+        *)
+            local s
+            s=$(echo "$detected" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/_/g; s/^_+|_+$//g')
+            echo "${s}_${vram_gb}gb"
+            ;;
+    esac
+}
+
+# =============================================================================
+# Mapping informativ "actual_slug -> for_target_key" (cine-pentru-cine, fallback
+# daca summary.json[target_gpu] lipseste). compare-results.sh foloseste ASTA
+# DOAR ca fallback - sursa de adevar e summary.json scris la fiecare run.
+# =============================================================================
+SURROGATE_FOR=(
+    "tesla_t4_16gb|quadro_rtx5000_16gb"
+    "quadro_p5000_16gb|quadro_rtx5000_16gb"     # P5000 nu se mai testeaza ca target -> doar ca surogat
+    "nvidia_a2_16gb|quadro_rtx5000_16gb"
+)
+
+# Returneaza target_key pentru un actual_slug, sau gol
+surrogate_target_for() {
+    local slug="$1"
+    local m
+    for m in "${SURROGATE_FOR[@]}"; do
+        [[ "${m%%|*}" == "$slug" ]] && echo "${m##*|}" && return 0
     done
     return 1
 }

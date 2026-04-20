@@ -12,13 +12,15 @@ cd "$(dirname "$0")"
 GPU_KEY="quadro_rtx5000_16gb"
 TARGET_GPU="Quadro RTX 5000 16GB"
 TARGET_VRAM_GB=16
-# Ordinea conteaza: prima e target real, restul sunt surogati Turing (in ordinea preferintei)
-#   Tesla T4 16GB     - acelasi chip TU104, lower bound (preferred)
-#   RTX 2080 Ti 11GB  - TU102 mai puternic dar 11GB -> 14B Q8 si 32B Q3 vor face OOM
-#   Quadro RTX 6000   - TU102 24GB, OPTIMIST upper bound (toate 6 modele intra)
-#   Titan RTX 24GB    - TU102 ca RTX 6000, optimist upper bound
-ACCEPTED_GPU_REGEXES=("Quadro RTX 5000" "Tesla T4" "RTX 2080 Ti" "Quadro RTX 6000" "Titan RTX")
-PROXY_NOTE="RTX 5000 16GB (Turing TU104) nu e pe Vast.ai. Surogati acceptati (in ordinea preferintei lower-bound): T4 16GB > 2080 Ti 11GB > RTX 6000 24GB > Titan RTX 24GB. Cu T4 -> rezultate lower bound. Cu RTX 6000/Titan -> rezultate OPTIMIST (RTX 5000 va fi mai lenta). Cu 2080 Ti -> doar R1-14B va incape (11GB)."
+# Surogati valizi pentru RTX 5000 16GB (toate sunt strict 16GB si LOWER pe compute+bandwidth):
+#   1. Tesla T4 16GB     - TU104 Turing, ~73% perf (acelasi chip, doar downclocked) - PREFERAT
+#   2. Quadro P5000 16GB - GP104 Pascal, ~65-70% perf (strict lower pe ambele axe)
+#   3. NVIDIA A2 16GB    - GA107 Ampere LP, ~45% perf (foarte conservator, lower bound generos)
+# Toate produc rezultate LOWER BOUND -> RTX 5000 reala va fi mai rapida decat ce vezi.
+# Restul GPU-urilor de pe Vast (RTX 2080 Ti, RTX 6000, Titan RTX, A4000, P100) sunt mai puternice
+# pe macar o axa critica -> EXCLUSE (ar produce decizii optimiste).
+ACCEPTED_GPU_REGEXES=("Quadro RTX 5000" "Tesla T4" "Quadro P5000" "NVIDIA A2")
+PROXY_NOTE="RTX 5000 16GB (Turing TU104) nu e pe Vast.ai. Surogati lower-bound (in ordinea preferintei): T4 16GB (~73%) > P5000 16GB (~65-70%) > A2 16GB (~45%). RTX 5000 reala va fi mai rapida decat ce masori cu surogatul - cu cat folosesti unul mai slab, cu atat marja e mai mare."
 
 source _common/config.sh
 source _common/prices.sh

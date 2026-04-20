@@ -15,6 +15,12 @@
 
 set -euo pipefail
 
+# Sourcing gpu_mapping.sh ca sa avem canonical_gpu_slug + SURROGATE_FOR
+# (calea relativa la directorul acestui fisier, nu la CWD)
+_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=gpu_mapping.sh
+source "${_LIB_DIR}/gpu_mapping.sh"
+
 # Colorat doar daca avem terminal
 if [[ -t 1 ]]; then
     C_R=$'\e[0;31m'; C_G=$'\e[0;32m'; C_Y=$'\e[1;33m'
@@ -34,11 +40,11 @@ hr()       { echo "${C_C}=====================================================${
 # =============================================================================
 # Variabile globale derivate (populate la rulare)
 # =============================================================================
-GPU_SLUG=""           # ex: v100-32gb (alias pentru GPU_KEY, folosit ca dirname)
-RESULTS_DIR=""        # results/<slug>
-DETECTED_GPU=""       # ce a returnat nvidia-smi
-PROXY_MODE="false"    # "true" daca rulam pe surogat
-PROXY_FOR=""          # GPU vizat, daca proxy_mode
+GPU_SLUG=""           # dirname final = canonical_gpu_slug(DETECTED_GPU, vram)
+RESULTS_DIR=""        # results/<GPU_SLUG>/
+DETECTED_GPU=""       # ce a returnat nvidia-smi --query-gpu=name
+PROXY_MODE="false"    # "true" daca rulam pe surogat (DETECTED != target)
+PROXY_FOR=""          # GPU_KEY-ul vizat (dpv business), daca proxy_mode
 RUN_LOG=""            # path catre _run-log.txt
 NVSMI_PID=""          # PID pentru nvidia-smi background process
 RUN_TIMESTAMP=""      # ISO 8601, used pentru commit message
@@ -51,16 +57,32 @@ phase_0_system_info() {
     log_info "Phase 0: Colectare info sistem"
     hr
 
-    GPU_SLUG="$GPU_KEY"
+    RUN_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    # Detecteaza GPU + VRAM
+    DETECTED_GPU=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1 | xargs || echo "unknown")
+    local detected_vram_mb
+    detected_vram_mb=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | xargs || echo 0)
+    local detected_vram_gb=$(( (detected_vram_mb + 512) / 1024 ))   # round to nearest GB
+
+    # Slug-ul = canonical pentru GPU-ul REAL detectat (consistent cu naming-ul
+    # vechi pentru cele 5 target-uri, slug nou pentru fiecare surogat).
+    # Astfel results/<slug>/ reflecta exact pe ce hardware s-a rulat.
+    # Maparea "acest slug = surogat pentru ce target" e in summary.json[target_gpu]
+    # si in gpu_mapping.sh::SURROGATE_FOR (fallback static).
+    GPU_SLUG=$(canonical_gpu_slug "$DETECTED_GPU" "$detected_vram_gb")
+
     RESULTS_DIR="results/$GPU_SLUG"
     mkdir -p "$RESULTS_DIR"
     RUN_LOG="$RESULTS_DIR/_run-log.txt"
-    RUN_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-    log "Target GPU:    $TARGET_GPU"
-    log "GPU key:       $GPU_KEY"
+    log "Target GPU:    $TARGET_GPU (key: $GPU_KEY)"
+    log "GPU detectat:  ${C_BOLD}$DETECTED_GPU${C_RESET} (~${detected_vram_gb} GB)"
     log "VRAM target:   ${TARGET_VRAM_GB} GB"
-    log "Results dir:   $RESULTS_DIR"
+    log "Results dir:   ${C_BOLD}$RESULTS_DIR${C_RESET}"
+    if [[ "$GPU_SLUG" != "$GPU_KEY" ]]; then
+        log_warn "Surogat detectat. Director numit dupa GPU-ul real ($GPU_SLUG); summary.json contine target_gpu=$TARGET_GPU pentru a-l grupa cu target-ul."
+    fi
 
     local sys_txt="$RESULTS_DIR/_system-info.txt"
     {
@@ -70,6 +92,11 @@ phase_0_system_info() {
         echo "TARGET_GPU=$TARGET_GPU"
         echo "TARGET_VRAM_GB=$TARGET_VRAM_GB"
         echo "GPU_KEY=$GPU_KEY"
+        echo
+        echo "--- Detected ---"
+        echo "DETECTED_GPU=$DETECTED_GPU"
+        echo "GPU_SLUG (results dirname, dupa GPU REAL)=$GPU_SLUG"
+        echo "PROXY_MODE=$([[ "$GPU_SLUG" != "$GPU_KEY" ]] && echo true || echo false)"
         echo
         echo "--- nvidia-smi ---"
         nvidia-smi 2>&1 || echo "nvidia-smi NOT AVAILABLE"
@@ -92,14 +119,14 @@ phase_0_system_info() {
     } > "$sys_txt"
 
     # Versiune compacta in JSON
-    local gpu_name gpu_total_mb driver compute_cap cpu_model cpu_cores ram_gb
-    gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits | head -1 | xargs || echo "unknown")
+    local gpu_total_mb driver compute_cap cpu_model cpu_cores ram_gb proxy_flag
     gpu_total_mb=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1 | xargs || echo 0)
     driver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits | head -1 | xargs || echo "unknown")
     compute_cap=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits | head -1 | xargs || echo "unknown")
     cpu_model=$(lscpu | grep -m1 "Model name" | sed 's/Model name: *//' | xargs || echo "unknown")
     cpu_cores=$(nproc 2>/dev/null || echo 0)
     ram_gb=$(free -g | awk '/^Mem:/{print $2}' 2>/dev/null || echo 0)
+    proxy_flag=$([[ "$GPU_SLUG" != "$GPU_KEY" ]] && echo true || echo false)
 
     cat > "$RESULTS_DIR/_system-info.json" <<EOF
 {
@@ -107,7 +134,9 @@ phase_0_system_info() {
   "target_gpu": "$TARGET_GPU",
   "target_vram_gb": $TARGET_VRAM_GB,
   "gpu_key": "$GPU_KEY",
-  "detected_gpu": "$gpu_name",
+  "detected_gpu": "$DETECTED_GPU",
+  "gpu_slug": "$GPU_SLUG",
+  "proxy_mode": $proxy_flag,
   "gpu_total_mb": $gpu_total_mb,
   "driver_version": "$driver",
   "compute_capability": "$compute_cap",
@@ -116,7 +145,6 @@ phase_0_system_info() {
   "ram_gb": $ram_gb
 }
 EOF
-    DETECTED_GPU="$gpu_name"
     log_ok "System info salvat in $RESULTS_DIR/_system-info.{json,txt}"
 }
 
@@ -697,13 +725,18 @@ print(f"[OK] Summary JSON: {summary_json}")
 
 # Markdown summary
 lines = []
-lines.append(f"# Benchmark summary: {target_gpu}")
+lines.append(f"# Benchmark summary: target = {target_gpu}")
 lines.append("")
-lines.append(f"- **GPU detectat:** `{detected_gpu}`")
+lines.append(f"## ⚠ EXECUTAT PE: `{detected_gpu}`")
+lines.append("")
 if proxy_mode:
-    lines.append(f"- **Proxy mode:** DA - rulat ca surogat pentru `{proxy_for}` (rezultatele sunt lower bound)")
+    lines.append(f"- **Proxy mode:** DA")
+    lines.append(f"- **Target real (cumparat):** `{proxy_for}`")
+    lines.append(f"- **Surogat folosit:** `{detected_gpu}`")
+    if detected_gpu != proxy_for:
+        lines.append(f"- ⚠ **Atentie:** rezultatele reflecta perfomanta lui `{detected_gpu}`, NU a target-ului. Verifica daca surogatul e lower-bound real (mai slab pe compute SI bandwidth) sau optimist (mai puternic) inainte de a folosi cifrele pentru decizia de cumparare.")
 else:
-    lines.append(f"- **Proxy mode:** NU (target real)")
+    lines.append(f"- **Proxy mode:** NU - rulat pe target real")
 lines.append(f"- **VRAM target:** {target_vram_gb} GB")
 lines.append(f"- **Pret cumparare:** ${purchase_price:.0f} ({purchase_source})")
 lines.append(f"- **Vast.ai $/hr:** ${vast_hourly:.3f}")
@@ -850,7 +883,10 @@ phase_6_git_push_results() {
 # main_pipeline - orchestrator
 # =============================================================================
 main_pipeline() {
-    # Tee toate output-urile in _run-log.txt (creat dupa phase_0)
+    # Tee output-urile in _run-log.txt (creat dupa phase_0)
+    # IMPORTANT: phase_6 (git push) NU e in tee block-ul cu RUN_LOG, altfel ar
+    # modifica _run-log.txt chiar in timp ce incearca push -> race condition cu
+    # `git pull --rebase` care vede unstaged changes si refuza.
     phase_0_system_info
     {
         phase_0b_verify_gpu
@@ -859,8 +895,13 @@ main_pipeline() {
         phase_3_pull_and_create
         phase_4_run_benchmarks
         phase_5_generate_report
-        phase_6_git_push_results
+        log "==> Pipeline phases 0-5 done. Predand catre phase 6 (git push) - logging muta in /tmp."
     } 2>&1 | tee -a "$RUN_LOG"
+
+    # phase_6 logheaza separat in /tmp ca sa nu modifice _run-log.txt in timpul push-ului
+    local push_log="/tmp/push-${GPU_SLUG}-$(date +%s).log"
+    phase_6_git_push_results 2>&1 | tee "$push_log"
+    log "Push log salvat la: $push_log"
 
     hr
     log_ok "BENCHMARK COMPLET pentru $TARGET_GPU"
