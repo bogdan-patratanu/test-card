@@ -309,14 +309,14 @@ phase_3_pull_and_create() {
 # =============================================================================
 
 # Lanseaza nvidia-smi polling in background, output CSV
+# IMPORTANT: capturam PID-ul direct al lui nvidia-smi (nu al grupului bash)
+# ca sa-l putem omori corect cu kill. Header-ul e scris separat inainte.
 start_nvsmi_polling() {
     local out_csv="$1"
-    {
-        echo "timestamp,gpu_util_pct,mem_used_mb,mem_total_mb,temp_c,power_w"
-        nvidia-smi --query-gpu=timestamp,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw \
-                   --format=csv,noheader,nounits \
-                   -lms $((NVSMI_POLL_INTERVAL * 1000)) 2>/dev/null
-    } > "$out_csv" &
+    echo "timestamp,gpu_util_pct,mem_used_mb,mem_total_mb,temp_c,power_w" > "$out_csv"
+    nvidia-smi --query-gpu=timestamp,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw \
+               --format=csv,noheader,nounits \
+               -lms $((NVSMI_POLL_INTERVAL * 1000)) 2>/dev/null >> "$out_csv" &
     NVSMI_PID=$!
     sleep 0.5
 }
@@ -327,6 +327,8 @@ stop_nvsmi_polling() {
         wait "$NVSMI_PID" 2>/dev/null || true
         NVSMI_PID=""
     fi
+    # Defensive: omoara orice nvidia-smi orfan ramas (in caz ca PID tracking a esuat)
+    pkill -f "nvidia-smi.*query-gpu" 2>/dev/null || true
 }
 
 # Calculeaza statistici peste CSV nvidia-smi (vram peak, util avg, temp max, power avg)
@@ -791,6 +793,10 @@ phase_6_git_push_results() {
     git config user.name "Vast.ai $GPU_KEY" 2>/dev/null || true
     git remote set-url origin "https://oauth2:${GITHUB_TOKEN}@github.com/${owner_repo}.git"
 
+    # Defensive: omoara orice nvidia-smi orfan inainte sa colectam fisierele
+    pkill -f "nvidia-smi.*query-gpu" 2>/dev/null || true
+    sleep 1
+
     # Add results
     cd "$(git rev-parse --show-toplevel)"
     git add "test-card/$RESULTS_DIR" 2>/dev/null || git add "$RESULTS_DIR" 2>/dev/null || true
@@ -805,12 +811,25 @@ phase_6_git_push_results() {
         return 1
     }
 
-    # Push cu retry
+    # Push cu retry. La fiecare iteratie:
+    #   1. Stage orice modificare aparuta intre timp (nvidia-smi orfan, log size, etc.)
+    #   2. Daca exista, amend la commit-ul existent
+    #   3. pull --rebase + push
     local current_branch
     current_branch=$(git rev-parse --abbrev-ref HEAD)
     local i
     for ((i=1; i<=GIT_PUSH_MAX_RETRIES; i++)); do
         log "Push attempt $i/$GIT_PUSH_MAX_RETRIES (branch: $current_branch)..."
+
+        # Inca o data: pkill in caz ca a aparut ceva nou
+        pkill -f "nvidia-smi.*query-gpu" 2>/dev/null || true
+        # Stage orice modificare ramasa in results/ si amend
+        git add "test-card/$RESULTS_DIR" 2>/dev/null || git add "$RESULTS_DIR" 2>/dev/null || true
+        if ! git diff --cached --quiet; then
+            log "Modificari noi detectate, amend la commit..."
+            git commit --amend --no-edit || true
+        fi
+
         if git pull --rebase origin "$current_branch" && git push origin "$current_branch"; then
             log_ok "Push reusit! Rezultatele sunt in repo."
             log_ok "Local fa: ${C_BOLD}git pull${C_RESET}"
