@@ -81,7 +81,7 @@ In **"Create"** (search bar GPU):
 |---|---|---|---:|---:|
 | **RTX 5060 Ti 16GB** | [01-test-rtx5060ti-16gb.sh](01-test-rtx5060ti-16gb.sh) | DA - filtreaza `RTX 5060 Ti` | $696 nou eMAG | $0.06 |
 | ~~**Quadro P5000 16GB**~~ ❌ SKIP ca target | [02-test-quadro-p5000-16gb.sh](02-test-quadro-p5000-16gb.sh) | n/a (daca apare pe Vast → folosita ca surogat pentru RTX 5000) | $217-518 OLX | n/a |
-| **Quadro RTX 5000 16GB** | [03-test-quadro-rtx5000-16gb.sh](03-test-quadro-rtx5000-16gb.sh) | NU -> SUROGATI 16GB lower-bound: `Tesla T4` > `Quadro P5000` > `NVIDIA A2` | **$346** OLX Bucuresti (1500 lei) | $0.08-0.12 |
+| **Quadro RTX 5000 16GB** | [03-test-quadro-rtx5000-16gb.sh](03-test-quadro-rtx5000-16gb.sh) | NU -> SUROGATI 16GB: `T4` / `P5000` / `A2` (lower) sau `RTX A4000` (optimist) | **$346** OLX Bucuresti (1500 lei) | $0.08-0.18 |
 | **RTX 3090 24GB** | [06-test-rtx3090-24gb.sh](06-test-rtx3090-24gb.sh) | DA - filtreaza `RTX 3090` | $760 OLX Bucuresti | $0.16 |
 | **Tesla V100 32GB** ⭐ | [08-test-v100-32gb.sh](08-test-v100-32gb.sh) | DA - filtreaza `V100-SXM2-32GB` sau `V100-PCIE-32GB` | $860 OLX Snagov | $0.21 |
 
@@ -101,15 +101,19 @@ In **"Create"** (search bar GPU):
 | **Quadro RTX 5000 16GB** (Turing TU104, 11.15 TF / 448 GB/s) | DA - 3 optiuni strict 16GB + lower (vezi tabelul de mai jos) | TESTAM. Filtru Vast pe oricare din `Tesla T4`, `Quadro P5000`, `NVIDIA A2` |
 | **Quadro P5000 16GB** (Pascal GP104) | NU - toate Pascal-urile pe Vast cu 16GB+ sunt mai puternice macar pe o axa (P40 mai mult VRAM, P100 HBM2 bandwidth dublu, 1080 Ti compute mai mare) | **SKIP** ca target. Daca apare totusi → o folosim ca surogat pentru RTX 5000 |
 
-#### Surogati 16GB pentru RTX 5000 (toate strict lower bound)
+#### Surogati 16GB pentru RTX 5000
 
-| Surogat | Chip / Gen | FP32 TFLOPS | Bandwidth | % din RTX 5000 | Comentariu |
-|---|---|---:|---:|---:|---|
-| **Tesla T4 16GB** | TU104 Turing | 8.1 | 320 GB/s | ~73% | PREFERAT - acelasi chip ca RTX 5000, doar downclocked |
-| **Quadro P5000 16GB** | GP104 Pascal | 8.87 | 288 GB/s | ~65-70% | Pascal precedenta, GDDR5X mai lent |
-| **NVIDIA A2 16GB** | GA107 Ampere LP | 4.5 | 200 GB/s | ~45% | Foarte conservator - lower bound generos, util daca T4 si P5000 nu sunt disponibile |
+| Surogat | Chip / Gen | FP32 TFLOPS | Bandwidth | % din RTX 5000 | Tip | Comentariu |
+|---|---|---:|---:|---:|:---:|---|
+| **Tesla T4 16GB** | TU104 Turing | 8.1 | 320 GB/s | ~73% | LOWER | PREFERAT - acelasi chip ca RTX 5000 |
+| **Quadro P5000 16GB** | GP104 Pascal | 8.87 | 288 GB/s | ~65-70% | LOWER | Pascal precedenta, GDDR5X mai lent |
+| **NVIDIA A2 16GB** | GA107 Ampere LP | 4.5 | 200 GB/s | ~45% | LOWER | Foarte conservator |
+| **RTX A4000 16GB** | GA104 Ampere | 19.17 | 448 GB/s | ~115-125% | ⚠ OPTIMIST | Bandwidth identic + 72% mai mult FP32. Adaugata din necesitate (T4/P5000/A2 frecvent epuizate). **RTX 5000 reala va fi cu ~15-25% MAI LENTA decat ce vezi** |
 
-Regula: cu cat surogatul e mai slab, cu atat marja de "RTX 5000 reala va fi mai rapida decat ce vezi" e mai mare. T4 ar da estimare apropiata, A2 ar da estimare foarte pesimista.
+**Regula corectie pe rezultate:**
+- Pe T4/P5000/A2 → numerele sunt LOWER bound, RTX 5000 va fi MAI rapida (estimare pesimista, "the worst case")
+- Pe A4000 → numerele sunt OPTIMISTE, **scade ~20% cu mintea** pentru a estima RTX 5000 reala
+- Cel mai bine: ruleaza pe doua surogate diferite (un lower + A4000) si plasezi RTX 5000 reala intre ele
 
 ### Bonus: scenariu 2x RTX 5000 cu NVLink
 
@@ -262,7 +266,7 @@ test-card/
 |---|---:|---:|---:|
 | RTX 5060 Ti 16GB | $0.06 | 30-60 min | $0.03-$0.06 |
 | ~~P5000~~ | ~~SKIP~~ | - | $0 |
-| Surogat RTX 5000 (T4 / P5000 / A2 16GB) | $0.08-0.12 | 30-60 min | $0.04-$0.12 |
+| Surogat RTX 5000 (T4 / P5000 / A2 / A4000 16GB) | $0.08-0.18 | 30-60 min | $0.04-$0.18 |
 | RTX 3090 24GB | $0.16 | 60-120 min | $0.16-$0.32 |
 | Tesla V100 32GB | $0.21 | 60-120 min | $0.21-$0.42 |
 | **TOTAL** | | | **~$0.45-$0.90** |

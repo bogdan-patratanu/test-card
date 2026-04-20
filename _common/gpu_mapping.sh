@@ -12,8 +12,10 @@ GPU_MAPPINGS=(
     "Tesla T4|03-test-quadro-rtx5000-16gb.sh"
     "Quadro P5000|03-test-quadro-rtx5000-16gb.sh"
     "NVIDIA A2|03-test-quadro-rtx5000-16gb.sh"
-    # Surogati pentru RTX 5000 (toate strict 16GB + LOWER compute+bw):
-    #   T4 (TU104 ~73%) > P5000 (GP104 ~70%) > A2 (GA107 ~45%, foarte conservator)
+    "RTX A4000|03-test-quadro-rtx5000-16gb.sh"
+    # Surogati pentru RTX 5000 (toate 16GB):
+    #   LOWER:    T4 (~73%) > P5000 (~70%) > A2 (~45%)
+    #   OPTIMIST: A4000 (~120%) - aplica corectie -15..-25% mental pe rezultate
     "RTX 3090|06-test-rtx3090-24gb.sh"
     "V100.*32|08-test-v100-32gb.sh"
 )
@@ -85,6 +87,7 @@ SURROGATE_FOR=(
     "tesla_t4_16gb|quadro_rtx5000_16gb"
     "quadro_p5000_16gb|quadro_rtx5000_16gb"     # P5000 nu se mai testeaza ca target -> doar ca surogat
     "nvidia_a2_16gb|quadro_rtx5000_16gb"
+    "rtx_a4000_16gb|quadro_rtx5000_16gb"        # OPTIMIST surogat: ~120% perf vs RTX 5000
 )
 
 # Returneaza target_key pentru un actual_slug, sau gol
