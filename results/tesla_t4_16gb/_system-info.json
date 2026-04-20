@@ -1,0 +1,15 @@
+{
+  "collected_at": "2026-04-20T14:20:17Z",
+  "target_gpu": "Quadro RTX 5000 16GB",
+  "target_vram_gb": 16,
+  "gpu_key": "quadro_rtx5000_16gb",
+  "detected_gpu": "Tesla T4",
+  "gpu_slug": "tesla_t4_16gb",
+  "proxy_mode": true,
+  "gpu_total_mb": 15360,
+  "driver_version": "560.35.03",
+  "compute_capability": "7.5",
+  "cpu_model": "Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz",
+  "cpu_cores": 56,
+  "ram_gb": 377
+}
