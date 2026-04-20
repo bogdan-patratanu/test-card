@@ -392,6 +392,13 @@ phase_4_run_benchmarks() {
         local metrics_file="$RESULTS_DIR/${cn}-metrics.json"
         local nvsmi_file="$RESULTS_DIR/${cn}-nvsmi.csv"
 
+        # Skip daca avem deja metrics OK pentru acest model (idempotent re-run)
+        if [[ -f "$metrics_file" ]] && \
+           python3 -c "import json,sys; sys.exit(0 if json.load(open('$metrics_file')).get('status')=='OK' else 1)" 2>/dev/null; then
+            log_ok "Skip $cn - metrics OK exista deja (re-run idempotent)"
+            continue
+        fi
+
         # Force unload modele anterioare ca sa fie cold
         log "Force unload modele in VRAM (keep_alive=0)..."
         ollama ps 2>/dev/null | tail -n +2 | awk '{print $1}' | while read -r loaded; do
@@ -480,8 +487,9 @@ sys.stdout.write(data.get('response', ''))
         nvsmi_stats=$(analyze_nvsmi_csv "$nvsmi_file")
         read -r vram_peak gpu_util_avg gpu_temp_max power_avg power_peak <<< "$nvsmi_stats"
 
+        local raw_api_file="$RESULTS_DIR/${cn}-raw-api-response.json"
         write_ok_metrics "$metrics_file" "$cn" "$base" "$min_vram" \
-                         "$wall_time" "$response_json" "$resp_chars" "$resp_is_json" \
+                         "$wall_time" "$raw_api_file" "$resp_chars" "$resp_is_json" \
                          "$vram_peak" "$gpu_util_avg" "$gpu_temp_max" "$power_avg" "$power_peak"
 
         log_ok "Metrici salvati in $metrics_file"
@@ -493,7 +501,7 @@ sys.stdout.write(data.get('response', ''))
 # =============================================================================
 write_ok_metrics() {
     local metrics_file="$1" cn="$2" base="$3" min_vram="$4" wall_time="$5"
-    local response_json="$6" resp_chars="$7" resp_is_json="$8"
+    local raw_api_file="$6" resp_chars="$7" resp_is_json="$8"
     local vram_peak="$9" gpu_util_avg="${10}" gpu_temp_max="${11}"
     local power_avg="${12}" power_peak="${13}"
 
@@ -508,11 +516,12 @@ write_ok_metrics() {
     fi
     analyses_per_day=$(echo "scale=0; 86400 / $wall_time" | bc -l)
 
-    # Extract Ollama metrics din response_json
+    # Extract Ollama metrics din raw_api_file (citit din fisier - stdin e deja consumat de heredoc)
     python3 - "$metrics_file" "$cn" "$base" "$min_vram" "$wall_time" "$resp_chars" "$resp_is_json" \
               "$vram_peak" "$gpu_util_avg" "$gpu_temp_max" "$power_avg" "$power_peak" \
               "$purchase_price" "$vast_hourly" "$cost_per_analysis" "$breakeven" "$analyses_per_day" \
-              "$GPU_KEY" "$TARGET_GPU" "$DETECTED_GPU" "$PROXY_MODE" "$PROXY_FOR" "$RUN_TIMESTAMP" <<EOF
+              "$GPU_KEY" "$TARGET_GPU" "$DETECTED_GPU" "$PROXY_MODE" "$PROXY_FOR" "$RUN_TIMESTAMP" \
+              "$raw_api_file" <<EOF
 import json, sys
 metrics_file = sys.argv[1]
 cn = sys.argv[2]; base = sys.argv[3]; min_vram = int(sys.argv[4])
@@ -527,9 +536,10 @@ analyses_per_day = int(float(sys.argv[17]))
 gpu_key = sys.argv[18]; target_gpu = sys.argv[19]; detected_gpu = sys.argv[20]
 proxy_mode = sys.argv[21] == "true"; proxy_for = sys.argv[22]
 run_ts = sys.argv[23]
+raw_api_file = sys.argv[24]
 
-response_json = sys.stdin.read()
-data = json.loads(response_json)
+with open(raw_api_file) as f:
+    data = json.load(f)
 
 prompt_eval_count = data.get("prompt_eval_count", 0)
 prompt_eval_duration_ns = data.get("prompt_eval_duration", 0)
