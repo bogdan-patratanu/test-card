@@ -63,18 +63,28 @@ for s in summaries:
             "gpu_key": s["gpu_key"],
             "target_gpu": s["target_gpu"],
             "detected_gpu": s["detected_gpu"],
+            "detected_vram_total_mb": m.get("detected_vram_total_mb", 0),
             "proxy_mode": s["proxy_mode"],
             "purchase_price_usd": s["purchase_price_usd"],
             "vast_price_per_hour_usd": s["vast_price_per_hour_usd"],
             "model": m.get("model"),
             "model_base": m.get("model_base"),
+            "model_size_mb": m.get("model_size_mb", 0),
             "status": m.get("status"),
             "wall_time_sec": m.get("wall_time_sec", 0),
             "prompt_eval_rate": m.get("prompt_eval_rate_tok_per_sec", 0),
             "eval_rate": m.get("eval_rate_tok_per_sec", 0),
+            "eval_count": m.get("eval_count", 0),
             "vram_peak_mb": m.get("vram_peak_mb", 0),
             "cost_per_analysis_usd": m.get("cost_per_analysis_usd", 0),
             "response_is_valid_json": m.get("response_is_valid_json"),
+            "response_chars": m.get("response_chars", 0),
+            "ctx_max_fits": m.get("ctx_max_fits", 0),
+            "ctx_used": m.get("ctx_used", 0),
+            "prompt_tokens_real": m.get("prompt_tokens_real", 0),
+            "prompt_truncated": m.get("prompt_truncated", False),
+            "ollama_kv_cache_type": m.get("ollama_kv_cache_type", "?"),
+            "ollama_flash_attention": m.get("ollama_flash_attention", "?"),
         })
 
 # ---------------------------------------------------------------------------
@@ -118,32 +128,99 @@ for s in summaries:
     md.append(f"| {s['target_gpu']} | `{s['detected_gpu']}` | {proxy} | ${s['purchase_price_usd']:.0f} | ${s['vast_price_per_hour_usd']:.3f} | {n_ok}/{n_total} | {best_str} |")
 md.append("")
 
-# Tabel mare per (GPU, model), sortat dupa cost/analiza
-md.append("## Tabel comparativ (toate runs sortate dupa cost/analiza Vast.ai)")
-md.append("")
-md.append("| GPU | Model | Status | Wall (s) | Prompt eval (tok/s) | Output (tok/s) | VRAM peak (MB) | Cost/analiza ($) | JSON valid? |")
-md.append("|---|---|:---:|---:|---:|---:|---:|---:|:---:|")
-
 ok_rows = sorted([r for r in rows if r["status"] == "OK"],
                  key=lambda r: r["cost_per_analysis_usd"])
 fail_rows = [r for r in rows if r["status"] != "OK"]
 
+# ============================================================
+# VIEW NOU: PER-MODEL COMPARISON
+# Pentru fiecare model: vezi cum a raspuns fiecare GPU care l-a putut rula.
+# ============================================================
+md.append("## Comparatie PER MODEL (cum a performat fiecare GPU pe acelasi model)")
+md.append("")
+md.append("Pentru fiecare LLM, vezi toate GPU-urile care l-au rulat. Util pentru:")
+md.append("- A vedea daca un model anume raspunde corect (JSON valid) pe toate cardurile")
+md.append("- A compara viteza pe acelasi model intre carduri")
+md.append("- A vedea unde un GPU nu poate rula modelul (PROMPT_TOO_LARGE / OOM / TIMEOUT)")
+md.append("")
+
+# Group rows by model_base (sau model custom name)
+from collections import defaultdict
+by_model = defaultdict(list)
+for r in rows:
+    key = r["model_base"] or r["model"]
+    by_model[key].append(r)
+
+# Sorteaza modelele dupa marime (dimens model)
+def model_size_key(rs):
+    sizes = [r.get("model_size_mb", 0) for r in rs if r.get("model_size_mb", 0) > 0]
+    return min(sizes) if sizes else 0
+
+for model_base in sorted(by_model.keys(), key=lambda k: model_size_key(by_model[k])):
+    model_rows = by_model[model_base]
+    sample = model_rows[0]
+    msize = sample.get("model_size_mb", 0)
+    
+    md.append(f"### `{model_base}` (~{msize}MB pe disc)")
+    md.append("")
+    md.append("| GPU (real) | Status | ctx max | ctx used | Prompt tok | Wall (s) | Eval tok/s | Output tok | VRAM peak | Cost ($) | JSON | Resp len |")
+    md.append("|---|:---:|---:|---:|---:|---:|---:|---:|---:|---:|:---:|---:|")
+    
+    # Sortare: OK primii (dupa wall_time), apoi failuri
+    sorted_rows = sorted(model_rows, key=lambda r: (
+        0 if r["status"] == "OK" else 1,
+        r.get("wall_time_sec", 1e9) if r["status"] == "OK" else 0
+    ))
+    
+    for r in sorted_rows:
+        gpu_label = r["detected_gpu"] or r["target_gpu"]
+        if r["proxy_mode"]:
+            gpu_label = f"{gpu_label} *(proxy pt {r['target_gpu']})*"
+        is_json_v = r["response_is_valid_json"]
+        is_json = "✓" if is_json_v is True else ("✗" if is_json_v is False else "-")
+        if r["status"] == "OK":
+            md.append(f"| {gpu_label} | OK | {r['ctx_max_fits']} | {r['ctx_used']} | "
+                      f"{r['prompt_tokens_real']} | {r['wall_time_sec']:.1f} | "
+                      f"{r['eval_rate']:.1f} | {r['eval_count']} | "
+                      f"{r['vram_peak_mb']} | {r['cost_per_analysis_usd']:.6f} | "
+                      f"{is_json} | {r['response_chars']} |")
+        else:
+            md.append(f"| {gpu_label} | **{r['status']}** | {r['ctx_max_fits']} | {r['ctx_used']} | "
+                      f"- | {r['wall_time_sec']:.1f} | - | - | "
+                      f"{r['vram_peak_mb']} | - | - | - |")
+    md.append("")
+md.append("")
+
+# ============================================================
+# Tabel mare global, sortat dupa cost
+# ============================================================
+md.append("## Tabel comparativ GLOBAL (toate runs OK, sortate dupa cost/analiza)")
+md.append("")
+md.append("| GPU (real) | Model | ctx used | Prompt tok | Wall (s) | Eval tok/s | VRAM peak | Cost ($) | JSON |")
+md.append("|---|---|---:|---:|---:|---:|---:|---:|:---:|")
+
 for r in ok_rows:
     proxy_mark = " *(proxy)*" if r["proxy_mode"] else ""
-    is_json = "YES" if r["response_is_valid_json"] else "NO" if r["response_is_valid_json"] is False else "-"
-    md.append(f"| {r['target_gpu']}{proxy_mark} | `{r['model']}` | OK | "
-              f"{r['wall_time_sec']:.1f} | {r['prompt_eval_rate']:.1f} | "
-              f"{r['eval_rate']:.1f} | {r['vram_peak_mb']} | "
-              f"{r['cost_per_analysis_usd']:.6f} | {is_json} |")
+    is_json_v = r["response_is_valid_json"]
+    is_json = "✓" if is_json_v is True else ("✗" if is_json_v is False else "-")
+    md.append(f"| {r['detected_gpu']}{proxy_mark} | `{r['model']}` | "
+              f"{r['ctx_used']} | {r['prompt_tokens_real']} | "
+              f"{r['wall_time_sec']:.1f} | {r['eval_rate']:.1f} | "
+              f"{r['vram_peak_mb']} | {r['cost_per_analysis_usd']:.6f} | {is_json} |")
 
 if fail_rows:
     md.append("")
-    md.append("### Failures")
+    md.append("### Failures (PROMPT_TOO_LARGE / OOM / TIMEOUT / FAILED)")
     md.append("")
-    md.append("| GPU | Model | Status |")
-    md.append("|---|---|:---:|")
+    md.append("| GPU | Model | Status | ctx max | ctx needed | Note |")
+    md.append("|---|---|:---:|---:|---:|---|")
     for r in fail_rows:
-        md.append(f"| {r['target_gpu']} | `{r['model']}` | {r['status']} |")
+        ctx_max = r.get("ctx_max_fits", 0)
+        ctx_used = r.get("ctx_used", 0)
+        note = ""
+        if r["status"] == "PROMPT_TOO_LARGE":
+            note = "Cardul nu poate procesa prompt-ul curent cu acest model"
+        md.append(f"| {r['detected_gpu']} | `{r['model']}` | {r['status']} | {ctx_max} | {ctx_used} | {note} |")
 md.append("")
 
 # Breakeven analysis

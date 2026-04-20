@@ -50,6 +50,11 @@ PROXY_FOR=""          # GPU_KEY-ul vizat (dpv business), daca proxy_mode
 RUN_LOG=""            # path catre _run-log.txt
 NVSMI_PID=""          # PID pentru nvidia-smi background process
 RUN_TIMESTAMP=""      # ISO 8601, used pentru commit message
+DETECTED_VRAM_MB=0    # VRAM total in MB (precis, nu rounded)
+EFFECTIVE_FA=1        # FlashAttention efectiv folosit (poate fi override pe Pascal)
+EFFECTIVE_KV_CACHE="q8_0"  # KV cache type efectiv folosit
+PROMPT_TOKENS_EST=0   # Estimare tokens prompt_test.txt (chars/3, conservator high)
+PROMPT_TOKENS_REAL=0  # Real tokens (din primul prompt_eval_count)
 
 # =============================================================================
 # phase_0_system_info
@@ -63,9 +68,8 @@ phase_0_system_info() {
 
     # Detecteaza GPU + VRAM
     DETECTED_GPU=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1 | xargs || echo "unknown")
-    local detected_vram_mb
-    detected_vram_mb=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | xargs || echo 0)
-    DETECTED_VRAM_GB=$(( (detected_vram_mb + 512) / 1024 ))   # round to nearest GB
+    DETECTED_VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | xargs || echo 0)
+    DETECTED_VRAM_GB=$(( (DETECTED_VRAM_MB + 512) / 1024 ))   # round to nearest GB
 
     # EFFECTIVE_VRAM_GB = ce VRAM avem REAL la dispozitie pentru selectia modelelor.
     # = min(target, detected). Surogate cu mai putin VRAM (ex: A2000 12GB pentru target
@@ -224,25 +228,25 @@ phase_1_install_ollama() {
         log_ok "Ollama instalat: $(ollama --version 2>&1 | head -1)"
     fi
 
-    # Configureaza env vars pentru optimizari + cold runs
-    # OLLAMA_KEEP_ALIVE=0 = unload model imediat dupa request -> garanteaza cold run
-    # OLLAMA_FLASH_ATTENTION=1 + KV_CACHE_TYPE=q8_0 = mai mult headroom VRAM
-    # PASCAL nu suporta FA2 eficient -> dezactivam pentru P5000/P40/1080Ti
-    local enable_fa=1
-    local kv_cache="q8_0"
+    # Configureaza env vars din config.sh (sursa unica)
+    # FA + KV q8_0 sunt safe pe orice arhitectura post-Turing.
+    # Pascal (P5000/P40/1080Ti) e SKIP pentru target-urile noastre, dar daca apare
+    # ca surogat, override-ul fortat la f16 + FA=0 e necesar.
+    local enable_fa="$OLLAMA_FLASH_ATTENTION"
+    local kv_cache="$OLLAMA_KV_CACHE_TYPE"
     if [[ "$DETECTED_GPU" =~ (P5000|P40|1080|P100) ]]; then
-        log_warn "GPU Pascal detectat -> dezactivez FlashAttention si KV cache q8_0"
+        log_warn "GPU Pascal detectat -> override: dezactivez FlashAttention si KV cache q8_0 (nesuportate eficient pe Pascal)"
         enable_fa=0
         kv_cache="f16"
     fi
 
-    log "Configurez systemd override pentru Ollama..."
+    log "Configurez systemd override pentru Ollama (FA=$enable_fa, KV=$kv_cache, KEEP_ALIVE=$OLLAMA_KEEP_ALIVE)..."
     sudo mkdir -p /etc/systemd/system/ollama.service.d 2>/dev/null || \
         mkdir -p /etc/systemd/system/ollama.service.d
     {
         cat <<EOF
 [Service]
-Environment="OLLAMA_KEEP_ALIVE=0"
+Environment="OLLAMA_KEEP_ALIVE=$OLLAMA_KEEP_ALIVE"
 Environment="OLLAMA_FLASH_ATTENTION=$enable_fa"
 Environment="OLLAMA_KV_CACHE_TYPE=$kv_cache"
 Environment="OLLAMA_NUM_PARALLEL=1"
@@ -250,6 +254,10 @@ Environment="OLLAMA_MAX_LOADED_MODELS=1"
 EOF
     } | (sudo tee /etc/systemd/system/ollama.service.d/override.conf >/dev/null 2>&1 || \
          tee /etc/systemd/system/ollama.service.d/override.conf >/dev/null)
+
+    # Salveaza efectiv folosite pentru loguri ulterioare
+    EFFECTIVE_FA=$enable_fa
+    EFFECTIVE_KV_CACHE=$kv_cache
 
     log "Restart Ollama service..."
     sudo systemctl daemon-reload 2>/dev/null || systemctl daemon-reload || true
@@ -295,13 +303,9 @@ phase_2_select_models() {
     log "Modele care vor fi rulate (${#SELECTED_MODELS[@]}):"
     local m
     for m in "${SELECTED_MODELS[@]}"; do
-        local mf="${m%%|*}"
-        local rest="${m#*|}"
-        local cn="${rest%%|*}"
-        local rest2="${rest#*|}"
-        local base="${rest2%%|*}"
-        local vram="${rest2##*|}"
-        log "  - $cn  (base: $base, ~${vram}GB)"
+        # Format nou: modelfile|cn|base|model_size_mb|kv_kb_per_tok|min_vram_gb
+        IFS='|' read -r _mf _cn _base _size_mb _kv_kb _min_vram <<< "$m"
+        log "  - $_cn  (base: $_base, model=${_size_mb}MB, KV=${_kv_kb}KB/tok @ q8_0, min ${_min_vram}GB)"
     done
 
     if (( ${#SELECTED_MODELS[@]} == 0 )); then
@@ -320,11 +324,7 @@ phase_3_pull_and_create() {
 
     local m
     for m in "${SELECTED_MODELS[@]}"; do
-        local mf="${m%%|*}"
-        local rest="${m#*|}"
-        local cn="${rest%%|*}"
-        local rest2="${rest#*|}"
-        local base="${rest2%%|*}"
+        IFS='|' read -r mf cn base _size _kv _min <<< "$m"
 
         log "Pull: ${C_BOLD}$base${C_RESET}"
         if timeout "$TIMEOUT_PULL_SEC" ollama pull "$base"; then
@@ -407,7 +407,7 @@ is_valid_json() {
 # =============================================================================
 phase_4_run_benchmarks() {
     hr
-    log_info "Phase 4: Benchmark cold per model"
+    log_info "Phase 4: Benchmark cold per model (ctx ADAPTIV per GPU+model)"
     hr
 
     local prompt_file="prompt_test.txt"
@@ -417,19 +417,25 @@ phase_4_run_benchmarks() {
     fi
     local prompt_chars
     prompt_chars=$(wc -c < "$prompt_file")
-    log "Prompt: $prompt_file ($prompt_chars caractere, ~$((prompt_chars / 4)) tokens)"
+    # Estimare conservatoare HIGH: chars/3 (Qwen tokenizer pe JSON dens da 2.8-3.2 chars/tok).
+    # Folosim chars/3 pt safety: prefer sa supraestimam si sa cerem ctx mai mare.
+    PROMPT_TOKENS_EST=$(( prompt_chars / 3 ))
+    log "Prompt: $prompt_file"
+    log "  Caractere: $prompt_chars"
+    log "  Tokens estimati (chars/3, conservator high): ~$PROMPT_TOKENS_EST"
+    log "  VRAM total disponibil: ${DETECTED_VRAM_MB}MB"
+    log "  Strategie ctx: max(needed, fits) cap la $MAX_CTX_CAP, safety ${VRAM_SAFETY_MARGIN_MB}MB"
+    log "  FA=$EFFECTIVE_FA, KV cache=$EFFECTIVE_KV_CACHE"
+
+    local needed_ctx_min=$(( PROMPT_TOKENS_EST + MIN_RESPONSE_TOKENS_BUFFER ))
+    log "  ctx minim necesar: $needed_ctx_min (prompt + buffer raspuns ${MIN_RESPONSE_TOKENS_BUFFER})"
 
     local m
     for m in "${SELECTED_MODELS[@]}"; do
-        local mf="${m%%|*}"
-        local rest="${m#*|}"
-        local cn="${rest%%|*}"
-        local rest2="${rest#*|}"
-        local base="${rest2%%|*}"
-        local min_vram="${rest2##*|}"
+        IFS='|' read -r mf cn base model_size_mb kv_kb_per_tok min_vram <<< "$m"
 
         hr
-        log_info "Benchmark COLD: ${C_BOLD}$cn${C_RESET} (base: $base, ~${min_vram}GB)"
+        log_info "Benchmark: ${C_BOLD}$cn${C_RESET} (base: $base)"
         hr
 
         local response_file="$RESULTS_DIR/${cn}-response.txt"
@@ -443,6 +449,47 @@ phase_4_run_benchmarks() {
             continue
         fi
 
+        # ====== ADAPTIVE CTX CALCULATION ======
+        # KV cache scale factor: la f16 = 2 bytes/value, la q8_0 = 1 byte/value.
+        # Valorile in model_tiers.sh sunt pentru q8_0. Pe Pascal cu KV=f16, dublam.
+        local kv_kb_effective=$kv_kb_per_tok
+        if [[ "$EFFECTIVE_KV_CACHE" == "f16" ]]; then
+            kv_kb_effective=$(( kv_kb_per_tok * 2 ))
+            log "  KV cache f16 (Pascal) -> KV/tok = ${kv_kb_effective}KB (dublu vs q8_0)"
+        fi
+
+        # Max ctx care intra in VRAM dupa load model + safety
+        local max_ctx_fits
+        max_ctx_fits=$(compute_max_ctx "$model_size_mb" "$kv_kb_effective" "$DETECTED_VRAM_MB" "$VRAM_SAFETY_MARGIN_MB")
+        log "  Max ctx HW (VRAM ${DETECTED_VRAM_MB}MB - model ${model_size_mb}MB - safety ${VRAM_SAFETY_MARGIN_MB}MB) = ${max_ctx_fits}"
+
+        # Verifica daca prompt-ul (+ buffer raspuns) intra
+        if (( max_ctx_fits < needed_ctx_min )); then
+            log_err "PROMPT TOO LARGE: ctx max = $max_ctx_fits < ctx minim necesar = $needed_ctx_min"
+            log_err "  Acest GPU nu poate procesa prompt-ul curent cu acest model."
+            log_err "  Solutii: prompt mai mic, model mai mic, sau GPU cu mai mult VRAM."
+            write_failed_metrics "$metrics_file" "$cn" "$base" "$min_vram" "$model_size_mb" "$kv_kb_per_tok" \
+                "PROMPT_TOO_LARGE" "\"max_ctx=$max_ctx_fits, needed=$needed_ctx_min, prompt_tokens_est=$PROMPT_TOKENS_EST\"" \
+                "0" "" "$max_ctx_fits" "0"
+            continue
+        fi
+
+        # ctx_used = max(needed, min(max_fits, MAX_CAP, needed * OVERSHOOT))
+        # Adica: minim cat ne trebuie, dar nu mai mult decat util sau decat fits.
+        local ctx_target=$(( needed_ctx_min * CTX_OVERSHOOT_FACTOR_NUM / CTX_OVERSHOOT_FACTOR_DEN ))
+        local ctx_used=$ctx_target
+        if (( ctx_used > max_ctx_fits )); then ctx_used=$max_ctx_fits; fi
+        if (( ctx_used > MAX_CTX_CAP )); then ctx_used=$MAX_CTX_CAP; fi
+        if (( ctx_used < needed_ctx_min )); then ctx_used=$needed_ctx_min; fi
+        # Round to multiple of 1024
+        ctx_used=$(( (ctx_used / 1024) * 1024 ))
+        if (( ctx_used < needed_ctx_min )); then
+            # Round down a iesit sub minim, mareste cu inca un 1024
+            ctx_used=$(( ctx_used + 1024 ))
+        fi
+
+        log "  ${C_BOLD}ctx_used = $ctx_used${C_RESET} (max_fits=$max_ctx_fits, target=$ctx_target, cap=$MAX_CTX_CAP)"
+
         # Force unload modele anterioare ca sa fie cold
         log "Force unload modele in VRAM (keep_alive=0)..."
         ollama ps 2>/dev/null | tail -n +2 | awk '{print $1}' | while read -r loaded; do
@@ -450,7 +497,7 @@ phase_4_run_benchmarks() {
         done
         sleep 2
 
-        # Build payload JSON cu prompt-ul
+        # Build payload JSON cu prompt-ul + ctx adaptiv
         local payload
         payload=$(python3 -c "
 import json, sys
@@ -463,7 +510,7 @@ print(json.dumps({
     'options': {
         'temperature': $SAMPLING_TEMPERATURE,
         'seed': $SAMPLING_SEED,
-        'num_ctx': $NUM_CTX
+        'num_ctx': $ctx_used
     }
 }))")
 
@@ -500,8 +547,10 @@ print(json.dumps({
                 failure_reason="$clean_err"
             fi
             log_err "Request $status in $(printf '%.1f' "$wall_time")s"
-            # Salveaza metrici partial si treci la urmatorul
-            write_failed_metrics "$metrics_file" "$cn" "$base" "$min_vram" "$status" "$failure_reason" "$wall_time" "$nvsmi_file"
+            write_failed_metrics "$metrics_file" "$cn" "$base" "$min_vram" \
+                "$model_size_mb" "$kv_kb_per_tok" \
+                "$status" "$failure_reason" "$wall_time" "$nvsmi_file" \
+                "$max_ctx_fits" "$ctx_used"
             continue
         fi
 
@@ -533,8 +582,10 @@ sys.stdout.write(data.get('response', ''))
 
         local raw_api_file="$RESULTS_DIR/${cn}-raw-api-response.json"
         write_ok_metrics "$metrics_file" "$cn" "$base" "$min_vram" \
+                         "$model_size_mb" "$kv_kb_per_tok" \
                          "$wall_time" "$raw_api_file" "$resp_chars" "$resp_is_json" \
-                         "$vram_peak" "$gpu_util_avg" "$gpu_temp_max" "$power_avg" "$power_peak"
+                         "$vram_peak" "$gpu_util_avg" "$gpu_temp_max" "$power_avg" "$power_peak" \
+                         "$max_ctx_fits" "$ctx_used"
 
         log_ok "Metrici salvati in $metrics_file"
     done
@@ -544,10 +595,12 @@ sys.stdout.write(data.get('response', ''))
 # write_ok_metrics - salveaza metrici pentru un run reusit
 # =============================================================================
 write_ok_metrics() {
-    local metrics_file="$1" cn="$2" base="$3" min_vram="$4" wall_time="$5"
-    local raw_api_file="$6" resp_chars="$7" resp_is_json="$8"
-    local vram_peak="$9" gpu_util_avg="${10}" gpu_temp_max="${11}"
-    local power_avg="${12}" power_peak="${13}"
+    local metrics_file="$1" cn="$2" base="$3" min_vram="$4"
+    local model_size_mb="$5" kv_kb_per_tok="$6" wall_time="$7"
+    local raw_api_file="$8" resp_chars="$9" resp_is_json="${10}"
+    local vram_peak="${11}" gpu_util_avg="${12}" gpu_temp_max="${13}"
+    local power_avg="${14}" power_peak="${15}"
+    local ctx_max="${16}" ctx_used="${17}"
 
     local purchase_price vast_hourly cost_per_analysis breakeven analyses_per_day
     purchase_price=$(get_price "$GPU_KEY" "purchase")
@@ -560,27 +613,40 @@ write_ok_metrics() {
     fi
     analyses_per_day=$(echo "scale=0; 86400 / $wall_time" | bc -l)
 
-    # Extract Ollama metrics din raw_api_file (citit din fisier - stdin e deja consumat de heredoc)
-    python3 - "$metrics_file" "$cn" "$base" "$min_vram" "$wall_time" "$resp_chars" "$resp_is_json" \
+    python3 - "$metrics_file" "$cn" "$base" "$min_vram" \
+              "$model_size_mb" "$kv_kb_per_tok" \
+              "$wall_time" "$resp_chars" "$resp_is_json" \
               "$vram_peak" "$gpu_util_avg" "$gpu_temp_max" "$power_avg" "$power_peak" \
               "$purchase_price" "$vast_hourly" "$cost_per_analysis" "$breakeven" "$analyses_per_day" \
               "$GPU_KEY" "$TARGET_GPU" "$DETECTED_GPU" "$PROXY_MODE" "$PROXY_FOR" "$RUN_TIMESTAMP" \
-              "$raw_api_file" <<EOF
+              "$raw_api_file" "$ctx_max" "$ctx_used" \
+              "$DETECTED_VRAM_MB" "$EFFECTIVE_FA" "$EFFECTIVE_KV_CACHE" \
+              "$PROMPT_TOKENS_EST" <<'PYEOF'
 import json, sys
-metrics_file = sys.argv[1]
-cn = sys.argv[2]; base = sys.argv[3]; min_vram = int(sys.argv[4])
-wall_time = float(sys.argv[5]); resp_chars = int(sys.argv[6])
-resp_is_json = sys.argv[7] == "true"
-vram_peak = int(float(sys.argv[8])); gpu_util_avg = float(sys.argv[9])
-gpu_temp_max = int(float(sys.argv[10])); power_avg = float(sys.argv[11])
-power_peak = float(sys.argv[12])
-purchase_price = float(sys.argv[13]); vast_hourly = float(sys.argv[14])
-cost_per_analysis = float(sys.argv[15]); breakeven = int(float(sys.argv[16]))
-analyses_per_day = int(float(sys.argv[17]))
-gpu_key = sys.argv[18]; target_gpu = sys.argv[19]; detected_gpu = sys.argv[20]
-proxy_mode = sys.argv[21] == "true"; proxy_for = sys.argv[22]
-run_ts = sys.argv[23]
-raw_api_file = sys.argv[24]
+(metrics_file, cn, base, min_vram_s,
+ model_size_mb_s, kv_kb_s,
+ wall_time_s, resp_chars_s, resp_is_json_s,
+ vram_peak_s, gpu_util_avg_s, gpu_temp_max_s, power_avg_s, power_peak_s,
+ purchase_price_s, vast_hourly_s, cost_per_analysis_s, breakeven_s, analyses_per_day_s,
+ gpu_key, target_gpu, detected_gpu, proxy_mode_s, proxy_for, run_ts,
+ raw_api_file, ctx_max_s, ctx_used_s,
+ vram_total_mb_s, fa_s, kv_type,
+ prompt_tokens_est_s) = sys.argv[1:]
+
+min_vram = int(min_vram_s); model_size_mb = int(model_size_mb_s); kv_kb = int(kv_kb_s)
+wall_time = float(wall_time_s); resp_chars = int(resp_chars_s)
+resp_is_json = resp_is_json_s == "true"
+vram_peak = int(float(vram_peak_s)); gpu_util_avg = float(gpu_util_avg_s)
+gpu_temp_max = int(float(gpu_temp_max_s)); power_avg = float(power_avg_s)
+power_peak = float(power_peak_s)
+purchase_price = float(purchase_price_s); vast_hourly = float(vast_hourly_s)
+cost_per_analysis = float(cost_per_analysis_s); breakeven = int(float(breakeven_s))
+analyses_per_day = int(float(analyses_per_day_s))
+proxy_mode = proxy_mode_s == "true"
+ctx_max = int(ctx_max_s); ctx_used = int(ctx_used_s)
+vram_total_mb = int(vram_total_mb_s)
+prompt_tokens_est = int(prompt_tokens_est_s)
+fa = int(fa_s)
 
 with open(raw_api_file) as f:
     data = json.load(f)
@@ -595,10 +661,16 @@ total_duration_ns = data.get("total_duration", 0)
 prompt_eval_rate = (prompt_eval_count / (prompt_eval_duration_ns / 1e9)) if prompt_eval_duration_ns > 0 else 0
 eval_rate = (eval_count / (eval_duration_ns / 1e9)) if eval_duration_ns > 0 else 0
 
+# Detecteaza truncare: daca prompt_eval_count == ctx_used, prompt-ul a fost capsat de Ollama
+# (semn ca tokenii reali > ctx alocat). Cu strategia adaptiva nu ar trebui sa se mai intample.
+truncated = (prompt_eval_count > 0 and prompt_eval_count >= ctx_used)
+
 out = {
     "model": cn,
     "model_base": base,
+    "model_size_mb": model_size_mb,
     "model_min_vram_gb": min_vram,
+    "kv_kb_per_token_q8": kv_kb,
     "status": "OK",
     "failure_reason": None,
     "run_type": "cold",
@@ -606,8 +678,17 @@ out = {
     "gpu_key": gpu_key,
     "target_gpu": target_gpu,
     "detected_gpu": detected_gpu,
+    "detected_vram_total_mb": vram_total_mb,
     "proxy_mode": proxy_mode,
     "proxy_for": proxy_for if proxy_mode else None,
+    "ollama_flash_attention": fa,
+    "ollama_kv_cache_type": kv_type,
+    "ctx_max_fits": ctx_max,
+    "ctx_used": ctx_used,
+    "ctx_headroom_pct": round((ctx_max - ctx_used) * 100.0 / ctx_max, 1) if ctx_max > 0 else 0,
+    "prompt_tokens_estimated": prompt_tokens_est,
+    "prompt_tokens_real": prompt_eval_count,
+    "prompt_truncated": truncated,
     "wall_time_sec": round(wall_time, 3),
     "load_duration_sec": round(load_duration_ns / 1e9, 3),
     "total_duration_sec": round(total_duration_ns / 1e9, 3),
@@ -632,7 +713,7 @@ out = {
 }
 with open(metrics_file, "w") as f:
     json.dump(out, f, indent=2)
-EOF
+PYEOF
 }
 
 # =============================================================================
@@ -640,10 +721,12 @@ EOF
 # =============================================================================
 write_failed_metrics() {
     local metrics_file="$1" cn="$2" base="$3" min_vram="$4"
-    local status="$5" failure_reason="$6" wall_time="$7" nvsmi_file="$8"
+    local model_size_mb="$5" kv_kb_per_tok="$6"
+    local status="$7" failure_reason="$8" wall_time="$9" nvsmi_file="${10}"
+    local ctx_max="${11}" ctx_used="${12}"
 
     local nvsmi_stats vram_peak gpu_util_avg gpu_temp_max power_avg power_peak
-    if [[ -f "$nvsmi_file" ]]; then
+    if [[ -n "$nvsmi_file" && -f "$nvsmi_file" ]]; then
         nvsmi_stats=$(analyze_nvsmi_csv "$nvsmi_file")
         read -r vram_peak gpu_util_avg gpu_temp_max power_avg power_peak <<< "$nvsmi_stats"
     else
@@ -658,7 +741,9 @@ write_failed_metrics() {
 {
   "model": "$cn",
   "model_base": "$base",
+  "model_size_mb": $model_size_mb,
   "model_min_vram_gb": $min_vram,
+  "kv_kb_per_token_q8": $kv_kb_per_tok,
   "status": "$status",
   "failure_reason": $failure_reason,
   "run_type": "cold",
@@ -666,8 +751,14 @@ write_failed_metrics() {
   "gpu_key": "$GPU_KEY",
   "target_gpu": "$TARGET_GPU",
   "detected_gpu": "$DETECTED_GPU",
+  "detected_vram_total_mb": $DETECTED_VRAM_MB,
   "proxy_mode": $PROXY_MODE,
   "proxy_for": $([ "$PROXY_MODE" = "true" ] && echo "\"$PROXY_FOR\"" || echo "null"),
+  "ollama_flash_attention": $EFFECTIVE_FA,
+  "ollama_kv_cache_type": "$EFFECTIVE_KV_CACHE",
+  "ctx_max_fits": $ctx_max,
+  "ctx_used": $ctx_used,
+  "prompt_tokens_estimated": $PROMPT_TOKENS_EST,
   "wall_time_sec": $(printf '%.3f' "$wall_time"),
   "vram_peak_mb": $vram_peak,
   "gpu_util_avg_pct": $gpu_util_avg,
@@ -757,10 +848,20 @@ lines.append(f"- **Vast.ai $/hr:** ${vast_hourly:.3f}")
 lines.append(f"- **Timestamp:** {run_ts}")
 lines.append(f"- **Modele rulate:** {len(models)} (OK: {len(ok_models)}, FAILED: {len(fail_models)})")
 lines.append("")
+lines.append("## Configurare ctx (adaptiv per model)")
+lines.append("")
+lines.append("ctx-ul a fost calculat pentru fiecare model in functie de:")
+lines.append("- VRAM total al cardului efectiv detectat")
+lines.append("- Marimea modelului in VRAM (din arhitectura)")
+lines.append("- KV cache per token (din arhitectura, la quantization q8_0)")
+lines.append("- Safety margin pentru activations + CUDA workspace")
+lines.append("")
+lines.append("Daca `ctx_max_fits < prompt_tokens + buffer raspuns`, modelul e marcat **PROMPT_TOO_LARGE** (cardul nu poate procesa prompt-ul tau cu acest model).")
+lines.append("")
 lines.append("## Per-model metrics")
 lines.append("")
-lines.append("| Model | Status | Wall (s) | Prompt eval (tok/s) | Output eval (tok/s) | Output tokens | VRAM peak (MB) | Cost/analiza ($) | Valid JSON |")
-lines.append("|---|---|---:|---:|---:|---:|---:|---:|:---:|")
+lines.append("| Model | Status | ctx max | ctx used | Prompt tok | Wall (s) | PromptEval tok/s | Eval tok/s | Output tok | VRAM peak MB | Cost/analiza $ | JSON |")
+lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|:---:|")
 
 for m in models:
     status = m.get("status", "?")
@@ -770,15 +871,35 @@ for m in models:
     ev_count = m.get("eval_count", 0)
     vram_peak = m.get("vram_peak_mb", 0)
     cost = m.get("cost_per_analysis_usd", 0)
-    is_json = "YES" if m.get("response_is_valid_json") else "NO" if m.get("response_is_valid_json") is False else "-"
-    lines.append(f"| `{m.get('model', '?')}` | {status} | {wall:.1f} | {pe_rate:.1f} | {ev_rate:.1f} | {ev_count} | {vram_peak} | {cost:.6f} | {is_json} |")
+    ctx_max = m.get("ctx_max_fits", 0)
+    ctx_used = m.get("ctx_used", 0)
+    prompt_real = m.get("prompt_tokens_real", 0)
+    is_json_v = m.get("response_is_valid_json")
+    is_json = "YES" if is_json_v is True else ("NO" if is_json_v is False else "-")
+    lines.append(f"| `{m.get('model', '?')}` | {status} | {ctx_max} | {ctx_used} | {prompt_real} | {wall:.1f} | {pe_rate:.1f} | {ev_rate:.1f} | {ev_count} | {vram_peak} | {cost:.6f} | {is_json} |")
+
+# Atentionare la truncare
+truncated_models = [m for m in models if m.get("prompt_truncated")]
+if truncated_models:
+    lines.append("")
+    lines.append("## ⚠ Truncari detectate")
+    lines.append("")
+    lines.append("Modele unde `prompt_eval_count >= ctx_used` (Ollama a trunchiat prompt-ul):")
+    for m in truncated_models:
+        lines.append(f"- **{m.get('model')}**: ctx_used={m.get('ctx_used')}, prompt_real={m.get('prompt_tokens_real')}")
+    lines.append("")
+    lines.append("Cauza probabila: estimare initiala chars/3 a fost prea optimista (tokenizer-ul real produce mai multi tokens pe acest tip de continut). Solutie: creste safety in PROMPT_TOKENS_EST.")
 
 if fail_models:
     lines.append("")
     lines.append("## Failures")
     lines.append("")
     for m in fail_models:
-        lines.append(f"- **{m.get('model')}** ({m.get('status')}): `{m.get('failure_reason', '-')}`")
+        st = m.get("status")
+        if st == "PROMPT_TOO_LARGE":
+            lines.append(f"- **{m.get('model')}** ({st}): VRAM-ul cardului ({m.get('detected_vram_total_mb')}MB) nu permite ctx suficient pentru acest model + prompt. Detalii: `{m.get('failure_reason', '-')}`")
+        else:
+            lines.append(f"- **{m.get('model')}** ({st}): `{m.get('failure_reason', '-')}`")
 
 summary_md = f"{results_dir}/summary.md"
 with open(summary_md, "w") as fp:

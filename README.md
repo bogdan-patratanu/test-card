@@ -145,18 +145,25 @@ tmux new -s bench
 
 ## 4. Modelele testate (filtrate per VRAM)
 
-Toate cu `num_ctx=32768`, `temperature=0`, `seed=42` (determinist), KV cache `q8_0` cu FlashAttention pe Turing+ (Pascal cade automat la `f16`).
+Toate cu `temperature=0`, `seed=42` (determinist), KV cache `q8_0` cu FlashAttention pe Turing+ (Pascal cade automat la `f16`).
 
-| Model | VRAM aprox | 16GB | 24GB | 32GB |
-|---|---|:---:|:---:|:---:|
-| `qwen2.5:14b-instruct-q8_0` | ~16GB | DA | DA | DA |
-| `qwen2.5:32b-instruct-q3_K_S` | ~14.5GB | DA | DA | DA |
-| `deepseek-r1:14b` (Q4) | ~9GB | DA | DA | DA |
-| `qwen2.5:32b-instruct-q4_K_M` | ~19GB | NU | DA | DA |
-| `deepseek-r1:32b` (Q4) | ~20GB | NU | DA | DA |
-| `qwq:32b` (Q4) | ~20GB | NU | DA | DA |
+**`num_ctx` e ADAPTIV per (GPU, model)** - calculat la runtime:
+- Pentru fiecare model, calculam max ctx care intra in VRAM: `(VRAM_total - model_size - safety_margin) / KV_per_token`
+- Verificam ca `prompt_tokens + buffer_raspuns <= max_ctx_predicted`. Daca nu → status `PROMPT_TOO_LARGE`, modelul e marcat ca neutilizabil pe acest card cu acest prompt.
+- Asa fiecare card foloseste TOT VRAM-ul lui, iar comparatia e corecta: nu compari A2000 12GB cu V100 32GB la acelasi ctx mic, ci vezi ce poate fiecare la maximul lui.
 
-Filtrarea se face in [_common/model_tiers.sh](_common/model_tiers.sh) (ajustabil).
+| Model | Size disk | KV q8_0 (KB/tok) | 12GB | 16GB | 24GB | 32GB |
+|---|---|---:|:---:|:---:|:---:|:---:|
+| `deepseek-r1:14b` | ~9GB | 96 | partial† | DA | DA | DA |
+| `qwen2.5:32b-instruct-q3_K_S` | ~14GB | 128 | NU | DA | DA | DA |
+| `qwen2.5:14b-instruct-q8_0` | ~15GB | 96 | NU | partial† | DA | DA |
+| `qwen2.5:32b-instruct-q4_K_M` | ~19GB | 128 | NU | NU | DA | DA |
+| `deepseek-r1:32b` | ~19GB | 128 | NU | NU | DA | DA |
+| `qwq:32b` | ~19GB | 128 | NU | NU | DA | DA |
+
+† **partial** = modelul incape dar ctx maxim e mai mic decat prompt-ul actual (~32-35K tokens) → status `PROMPT_TOO_LARGE`.
+
+Filtrarea initiala se face in [_common/model_tiers.sh](_common/model_tiers.sh). Verificarea finala (ctx fits) se face dinamic la runtime in `lib.sh::compute_max_ctx`.
 
 ### Estimari timp benchmark per GPU
 
@@ -252,11 +259,46 @@ test-card/
 ```
 
 `FINAL-REPORT.md` raspunde la "ce sa cumpar?":
-- Tabel comparativ (GPU x model) sortat dupa cost/analiza
+- **Comparatie PER MODEL** (cum a performat fiecare GPU pe acelasi LLM): util sa vezi daca un model raspunde corect (JSON valid) pe toate cardurile, sau daca un anumit GPU il rateaza
+- Tabel comparativ global (GPU x model) sortat dupa cost/analiza
 - Cost lunar pe Vast.ai vs cumparare la 50/100/300/1000 analize/zi
 - Breakeven (luni) per scenariu
 - Recomandare automata: "GPU X amortizeaza in Y luni la N analize/zi"
 - Marcheaza explicit rezultatele cu `proxy_mode=true`
+- Lista de PROMPT_TOO_LARGE: ce combinatii GPU+model nu pot rula prompt-ul curent
+
+### Strategia `num_ctx` adaptiv (NOU)
+
+Vechea strategie folosea `num_ctx=32768` fix pe toate GPU-urile. Asta avea **2 probleme grave**:
+
+1. **Truncare silentioasa.** Daca prompt > 32K, Ollama il taia de la stanga fara warning. Modelele nu mai vedeau instructiunile, raspundeau generic "this is time series data".
+2. **Nu testa real fiecare card.** Compara A2000 12GB cu V100 32GB la acelasi `num_ctx` mic = pierdeam 70% din capacitatea V100.
+
+Strategia nuoa:
+
+```
+Pentru fiecare (GPU detectat, model):
+  max_ctx_fits = (VRAM_total - model_size - safety_margin) / KV_per_token
+  needed_ctx = prompt_tokens + buffer_raspuns
+
+  if max_ctx_fits < needed_ctx:
+      status = PROMPT_TOO_LARGE  # cardul nu poate procesa
+  else:
+      ctx_used = round_to_1024(min(max_ctx_fits, needed_ctx * 1.5, MAX_CTX_CAP))
+      run benchmark cu ctx_used
+```
+
+Plus optimizari activate global:
+- `OLLAMA_FLASH_ATTENTION=1` (~2x mai mult ctx la acelasi VRAM)
+- `OLLAMA_KV_CACHE_TYPE=q8_0` (KV cache la 1 byte/value in loc de 2, ~2x mai mult ctx)
+
+Pe Pascal (P5000/P40/1080Ti/P100) override automat la `f16` + FA off (nesuportat eficient).
+
+Tunables in [_common/config.sh](_common/config.sh):
+- `MAX_CTX_CAP` (default 131072) = limita absoluta superioara
+- `VRAM_SAFETY_MARGIN_MB` (default 1536) = lasam liber pentru activations + workspace
+- `CTX_OVERSHOOT_FACTOR_NUM/DEN` (default 3/2 = 1.5x) = headroom peste necesar
+- `MIN_RESPONSE_TOKENS_BUFFER` (default 4096) = minim tokens pentru raspuns peste prompt
 
 ---
 
