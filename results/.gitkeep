@@ -1,0 +1,3 @@
+# Pastreaza folderul `results/` in repo (gol initial).
+# Subdirectoarele `results/<gpu_slug>/` sunt populate de scripturi PE Vast.ai
+# si commit-uite automat in repo via phase_6_git_push_results.

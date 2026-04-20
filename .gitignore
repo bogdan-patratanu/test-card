@@ -1,0 +1,8 @@
+# test-card local artefacts
+*.log
+*.tar.gz
+FINAL-REPORT.md
+FINAL-REPORT.json
+
+# Pastreaza results/ (committed via auto-push de pe Vast.ai)
+!results/
