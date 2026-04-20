@@ -81,13 +81,24 @@ In **"Create"** (search bar GPU):
 |---|---|---|---:|---:|
 | **RTX 5060 Ti 16GB** | [01-test-rtx5060ti-16gb.sh](01-test-rtx5060ti-16gb.sh) | DA - filtreaza `RTX 5060 Ti` | $696 nou eMAG | $0.06 |
 | **Quadro P5000 16GB** | [02-test-quadro-p5000-16gb.sh](02-test-quadro-p5000-16gb.sh) | NU -> SUROGAT: `Tesla P40 24GB` | $217-518 OLX | $0.10 (P40) |
-| **Quadro RTX 5000 16GB** | [03-test-quadro-rtx5000-16gb.sh](03-test-quadro-rtx5000-16gb.sh) | NU -> SUROGAT: `Tesla T4 16GB` | n/a OLX recent | $0.08 (T4) |
+| **Quadro RTX 5000 16GB** | [03-test-quadro-rtx5000-16gb.sh](03-test-quadro-rtx5000-16gb.sh) | NU -> SUROGATI (in ordinea preferintei): `Tesla T4 16GB` > `RTX 2080 Ti 11GB` > `Quadro RTX 6000 24GB` > `Titan RTX 24GB` | **$346** OLX Bucuresti (1500 lei) | $0.08-0.30 |
 | **RTX 3090 24GB** | [06-test-rtx3090-24gb.sh](06-test-rtx3090-24gb.sh) | DA - filtreaza `RTX 3090` | $760 OLX Bucuresti | $0.16 |
 | **Tesla V100 32GB** ⭐ | [08-test-v100-32gb.sh](08-test-v100-32gb.sh) | DA - filtreaza `V100-SXM2-32GB` sau `V100-PCIE-32GB` | $860 OLX Snagov | $0.21 |
 
 ⭐ = target principal cerut.
 
-**Surogati:** placile de Quadro NU sunt pe Vast.ai. Folosim *cel mai apropiat datacenter card* ca proxy. Scriptul detecteaza automat ca rulezi pe surogat si marcheaza `proxy_mode: true` in raport. Rezultatele sunt **lower bound** (placa reala va fi cel putin la fel de rapida).
+**Surogati:** placile de Quadro NU sunt pe Vast.ai. Folosim *cel mai apropiat datacenter card* ca proxy. Scriptul detecteaza automat ca rulezi pe surogat si marcheaza `proxy_mode: true` in raport.
+
+Pentru **RTX 5000** in special, T4 e adesea epuizat. In aceasta ordine de preferinta:
+
+| Surogat | Tip rezultat | Note |
+|---|---|---|
+| **Tesla T4 16GB** | LOWER BOUND (preferat) | Acelasi chip TU104, mai slab. RTX 5000 reala va fi ~30-40% mai rapida |
+| **RTX 2080 Ti 11GB** | LOWER BOUND partial | TU102 mai puternic dar doar 11GB - 14B Q8 si 32B Q3 vor face OOM, doar R1-14B se va testa |
+| **Quadro RTX 6000 24GB** | OPTIMIST upper bound | TU102 mai puternic + mai mult VRAM - RTX 5000 reala va fi mai lenta |
+| **Titan RTX 24GB** | OPTIMIST upper bound | La fel ca RTX 6000 |
+
+Pentru **P5000**: surogatul `Tesla P40 24GB` e *un pic optimist* (Pascal datacenter card mai puternic), dar singurul Pascal cu 16GB+ pe Vast. P5000 reala va fi marginal mai lenta.
 
 ### Pe Vast.ai, fluxul e mereu acelasi:
 
@@ -233,7 +244,7 @@ test-card/
 |---|---:|---:|---:|
 | RTX 5060 Ti 16GB | $0.06 | 30-60 min | $0.03-$0.06 |
 | Tesla P40 (proxy P5000) | $0.10 | 30-60 min | $0.05-$0.10 |
-| Tesla T4 (proxy RTX 5000) | $0.08 | 30-60 min | $0.04-$0.08 |
+| Surogat RTX 5000 (T4 / 2080 Ti / RTX 6000 / Titan RTX) | $0.08-0.30 | 30-60 min | $0.04-$0.30 |
 | RTX 3090 24GB | $0.16 | 60-120 min | $0.16-$0.32 |
 | Tesla V100 32GB | $0.21 | 60-120 min | $0.21-$0.42 |
 | **TOTAL** | | | **~$0.50-$1.00** |
@@ -256,6 +267,7 @@ test-card/
 |---|---:|---:|---|---|
 | Tesla V100 SXM2/PCIE | **32GB** | $860 | Snagov | server card, are nevoie de racire externa - target principal |
 | RTX 3090 (Zotac/Asus) | 24GB | $760 | Bucuresti | best raport pret/perf |
+| **Quadro RTX 5000 GDDR6** | **16GB** | **$346** (1500 lei) | Bucuresti Sector 6 | vendor "GodLike" Apr 2026 - [link OLX](https://www.olx.ro/d/oferta/placa-video-nvidia-16gb-gddr6-IDke7aQ.html), Turing TU104 |
 | Quadro P5000 | 16GB | $217-518 | divers | pret variabil mult, atentie OEM |
 
 ---
