@@ -1,0 +1,42 @@
+The data provided is a time series dataset for an asset (possibly a cryptocurrency or stock) with multiple time intervals (M15, M30, H1, H4, D1, MN1, and M5). Each interval contains timestamped open, high, low, and close prices. Here's a breakdown of the data structure:
+
+### General Structure
+- **Timestamp**: The first element in each row represents the time at which the price was recorded.
+- **Open (O)**: The opening price for that period.
+- **High (H)**: The highest price reached during that period.
+- **Low (L)**: The lowest price reached during that period.
+- **Close (C)**: The closing price of that period.
+
+### Example Data Points
+For the `M15` interval:
+```json
+"M15": [
+    ["2026-04-17 13:00:00", 114.095, 114.147, 114.081, 114.13],
+    ...
+]
+```
+This means that at `2026-04-17 13:00:00`, the asset opened at `114.095`, reached a high of `114.147`, had a low of `114.081`, and closed at `114.13`.
+
+### Time Intervals
+- **M15**: 15-minute intervals.
+- **M30**: 30-minute intervals.
+- **H1**: Hourly intervals.
+- **H4**: 4-hour intervals.
+- **D1**: Daily intervals.
+- **MN1**: Monthly intervals (though the data provided seems to be daily).
+- **M5**: 5-minute intervals.
+
+### Example of a Full Interval
+Here's an example from the `M30` interval:
+```json
+"M30": [
+    ["2026-04-17 12:30:00", 114.199, 114.258, 114.199, 114.25],
+    ...
+]
+```
+This indicates that at `2026-04-17 12:30:00`, the asset opened at `114.199`, reached a high of `114.258`, had a low of `114.199`, and closed at `114.25`.
+
+### Summary
+The dataset is structured to provide historical price data for an asset across different time intervals, which can be used for technical analysis or backtesting trading strategies.
+
+If you need any specific information or further processing on this data (e.g., filtering by date range, calculating indicators), please let me know!

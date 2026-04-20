@@ -1,0 +1,64 @@
+The provided data is a JSON-like structure containing historical price information for different time intervals (M1, M5, M15, M30, H1, etc.). Each interval contains an array of arrays where each sub-array represents a candlestick with the following format: `[timestamp, open_price, high_price, low_price, close_price]`.
+
+Here's a breakdown of the data for each time frame:
+
+### 1-minute (M1) Data:
+- **Timestamp:** `2026-04-17 13:15:00`
+- **Open Price:** 114.095
+- **High Price:** 114.106
+- **Low Price:** 114.077
+- **Close Price:** 114.081
+
+### 5-minute (M5) Data:
+- **Timestamp:** `2026-04-17 13:15:00`
+- **Open Price:** 114.095
+- **High Price:** 114.106
+- **Low Price:** 114.077
+- **Close Price:** 114.081
+
+### 15-minute (M15) Data:
+- **Timestamp:** `2026-04-17 13:15:00`
+- **Open Price:** 114.095
+- **High Price:** 114.186
+- **Low Price:** 114.077
+- **Close Price:** 114.123
+
+### 30-minute (M30) Data:
+- **Timestamp:** `2026-04-17 13:15:00`
+- **Open Price:** 114.095
+- **High Price:** 114.286
+- **Low Price:** 114.077
+- **Close Price:** 114.178
+
+### Hourly (H1) Data:
+- **Timestamp:** `2026-04-17 13:15:00`
+- **Open Price:** 114.095
+- **High Price:** 114.316
+- **Low Price:** 114.077
+- **Close Price:** 114.218
+
+### Daily (D) Data:
+- **Timestamp:** `2026-04-17`
+- **Open Price:** 114.095
+- **High Price:** 114.316
+- **Low Price:** 114.077
+- **Close Price:** 114.218
+
+### Weekly (W) Data:
+- **Timestamp:** `2026-04-17`
+- **Open Price:** 114.095
+- **High Price:** 114.316
+- **Low Price:** 114.077
+- **Close Price:** 114.218
+
+### Monthly (M) Data:
+- **Timestamp:** `2026-04`
+- **Open Price:** 114.095
+- **High Price:** 114.316
+- **Low Price:** 114.077
+- **Close Price:** 114.218
+
+### Summary:
+The data shows the price movements for different time intervals, with each interval providing a snapshot of the open, high, low, and close prices at specific timestamps.
+
+If you need more detailed information or analysis on any particular aspect of this data, please let me know!
