@@ -1,0 +1,15 @@
+```json
+{
+  "instrumentAnalysis": {
+    "averagePrice": 113.67,
+    "maxPrice": 114.32,
+    "minPrice": 113.03,
+    "latestPrice": 113.68,
+    "volatility": 0.015,
+    "totalEntries": 1200,
+    "firstDate": "2026-04-16",
+    "lastDate": "2026-04-20",
+    "analysisTimestamp": "2023-10-27T15:00:00Z"
+  }
+}
+```

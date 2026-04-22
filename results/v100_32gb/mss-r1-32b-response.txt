@@ -1,0 +1,53 @@
+{
+    "instrument": {
+        "timeframes": {
+            "D1": {
+                "high": 114.28,
+                "low": 113.04,
+                "open": 113.93,
+                "close": 114.28,
+                "volume": 156
+            },
+            "H4": {
+                "high": 114.28,
+                "low": 113.04,
+                "open": 113.93,
+                "close": 114.28,
+                "volume": 156
+            },
+            "M30": {
+                "high": 114.28,
+                "low": 113.04,
+                "open": 113.93,
+                "close": 114.28,
+                "volume": 156
+            },
+            "M15": {
+                "high": 114.28,
+                "low": 113.04,
+                "open": 113.93,
+                "close": 114.28,
+                "volume": 156
+            },
+            "M5": {
+                "high": 114.28,
+                "low": 113.04,
+                "open": 113.93,
+                "close": 114.28,
+                "volume": 156
+            },
+            "M1": {
+                "high": 114.28,
+                "low": 113.04,
+                "open": 113.93,
+                "close": 114.28,
+                "volume": 156
+            }
+        },
+        "summary": {
+            "highest_high": 114.28,
+            "lowest_low": 113.04,
+            "total_volume": 156
+        }
+    }
+}
