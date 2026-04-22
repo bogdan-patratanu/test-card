@@ -1,0 +1,31 @@
+{
+  "instrument": {
+    "name": "Instrument_1",
+    "timeframes": [
+      {
+        "name": "M5",
+        "data_points": 480
+      },
+      {
+        "name": "M15",
+        "data_points": 320
+      },
+      {
+        "name": "M60",
+        "data_points": 160
+      },
+      {
+        "name": "H1",
+        "data_points": 80
+      },
+      {
+        "name": "H4",
+        "data_points": 20
+      },
+      {
+        "name": "D1",
+        "data_points": 5
+      }
+    ]
+  }
+}
