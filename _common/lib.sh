@@ -53,7 +53,7 @@ RUN_TIMESTAMP=""      # ISO 8601, used pentru commit message
 DETECTED_VRAM_MB=0    # VRAM total in MB (precis, nu rounded)
 EFFECTIVE_FA=1        # FlashAttention efectiv folosit (poate fi override pe Pascal)
 EFFECTIVE_KV_CACHE="q8_0"  # KV cache type efectiv folosit
-PROMPT_TOKENS_EST=0   # Estimare tokens prompt_test.txt (chars/3, conservator high)
+PROMPT_TOKENS_EST=0   # Estimare tokens prompt_system.txt + prompt_user.txt (chars/3, conservator high)
 PROMPT_TOKENS_REAL=0  # Real tokens (din primul prompt_eval_count)
 
 # =============================================================================
@@ -298,18 +298,23 @@ phase_2_select_models() {
     # Daca un model nu poate fitui prompt-ul actual cu ctx adaptiv, il EXCLUDEM
     # de la inceput (NU lasam phase_4 sa marcheze PROMPT_TOO_LARGE).
     # Filozofia: toate modelele selectate VOR rula efectiv si vor produce metrici.
-    local prompt_file="prompt_test.txt"
+    local prompt_system_file="prompt_system.txt"
+    local prompt_user_file="prompt_user.txt"
     local prompt_tokens_est=0 needed_min=0
-    if [[ -f "$prompt_file" ]]; then
-        local prompt_chars
-        prompt_chars=$(wc -c < "$prompt_file")
-        prompt_tokens_est=$(( prompt_chars / 3 ))
+    if [[ -f "$prompt_system_file" && -f "$prompt_user_file" ]]; then
+        local sys_chars usr_chars total_chars
+        sys_chars=$(wc -c < "$prompt_system_file")
+        usr_chars=$(wc -c < "$prompt_user_file")
+        total_chars=$(( sys_chars + usr_chars ))
+        prompt_tokens_est=$(( total_chars / 3 ))
         needed_min=$(( prompt_tokens_est + MIN_RESPONSE_TOKENS_BUFFER ))
-        log "Prompt: $prompt_chars caractere, ~$prompt_tokens_est tokens"
+        log "Prompt SYSTEM: $sys_chars chars (instructiuni)"
+        log "Prompt USER:   $usr_chars chars (date + cerere)"
+        log "Prompt TOTAL:  $total_chars chars, ~$prompt_tokens_est tokens"
         log "ctx minim necesar (prompt + ${MIN_RESPONSE_TOKENS_BUFFER} buffer): $needed_min"
         log "VRAM detectat real: ${DETECTED_VRAM_MB}MB, safety: ${VRAM_SAFETY_MARGIN_MB}MB"
     else
-        log_warn "$prompt_file lipseste -> sar peste pre-filtru ctx (se valideaza in phase_4)"
+        log_warn "$prompt_system_file sau $prompt_user_file lipsesc -> sar peste pre-filtru ctx"
     fi
 
     # Pasul 1: candidati pe baza min_vram_gb (filtru grossier)
@@ -459,9 +464,10 @@ phase_4_run_benchmarks() {
     log_info "Phase 4: Benchmark cold per model (ctx ADAPTIV per GPU+model)"
     hr
 
-    local prompt_file="prompt_test.txt"
-    if [[ ! -f "$prompt_file" ]]; then
-        log_err "Lipseste $prompt_file in directorul curent"
+    local prompt_system_file="prompt_system.txt"
+    local prompt_user_file="prompt_user.txt"
+    if [[ ! -f "$prompt_system_file" ]] || [[ ! -f "$prompt_user_file" ]]; then
+        log_err "Lipseste $prompt_system_file sau $prompt_user_file in directorul curent"
         exit 1
     fi
 
@@ -486,13 +492,16 @@ phase_4_run_benchmarks() {
                   "$RESULTS_DIR/${cn_orphan}-nvsmi.csv"
         fi
     done
-    local prompt_chars
-    prompt_chars=$(wc -c < "$prompt_file")
+    local sys_chars usr_chars prompt_chars
+    sys_chars=$(wc -c < "$prompt_system_file")
+    usr_chars=$(wc -c < "$prompt_user_file")
+    prompt_chars=$(( sys_chars + usr_chars ))
     # Estimare conservatoare HIGH: chars/3 (Qwen tokenizer pe JSON dens da 2.8-3.2 chars/tok).
     # Folosim chars/3 pt safety: prefer sa supraestimam si sa cerem ctx mai mare.
     PROMPT_TOKENS_EST=$(( prompt_chars / 3 ))
-    log "Prompt: $prompt_file"
-    log "  Caractere: $prompt_chars"
+    log "Prompt SYSTEM: $prompt_system_file ($sys_chars chars)"
+    log "Prompt USER:   $prompt_user_file ($usr_chars chars)"
+    log "  Caractere total: $prompt_chars"
     log "  Tokens estimati (chars/3, conservator high): ~$PROMPT_TOKENS_EST"
     log "  VRAM total disponibil: ${DETECTED_VRAM_MB}MB"
     log "  Strategie ctx: max(needed, fits) cap la $MAX_CTX_CAP, safety ${VRAM_SAFETY_MARGIN_MB}MB"
@@ -566,15 +575,25 @@ phase_4_run_benchmarks() {
         done
         sleep 2
 
-        # Build payload JSON cu prompt-ul + ctx adaptiv
+        # Build payload JSON cu prompt-ul + ctx adaptiv.
+        # Folosim format /api/chat cu messages [system, user] - garanteaza ca:
+        #   - instructiunile de format sunt in 'system' (modelul stie ca-s reguli)
+        #   - datele reale (AUDJPY etc) sunt in 'user' (chiar inainte de generare)
+        # Asta evita ca modelul sa copieze pair-ul/preturile din exemplul de output.
+        # FISIERE SEPARATE garanteaza zero leak: nu exista risc de mixare.
         local payload
         payload=$(python3 -c "
-import json, sys
-with open('$prompt_file') as f:
-    prompt = f.read()
+import json
+with open('$prompt_system_file') as f:
+    system_content = f.read().strip()
+with open('$prompt_user_file') as f:
+    user_content = f.read().strip()
 print(json.dumps({
     'model': '$cn',
-    'prompt': prompt,
+    'messages': [
+        {'role': 'system', 'content': system_content},
+        {'role': 'user',   'content': user_content},
+    ],
     'stream': False,
     'options': {
         'temperature': $SAMPLING_TEMPERATURE,
@@ -591,7 +610,7 @@ print(json.dumps({
 
         local response_json
         if response_json=$(echo "$payload" | timeout "$TIMEOUT_PER_MODEL_SEC" \
-                            curl -sf -X POST "$OLLAMA_HOST/api/generate" \
+                            curl -sf -X POST "$OLLAMA_HOST/api/chat" \
                                  -H "Content-Type: application/json" \
                                  -d @- 2>&1); then
             end_ts=$(date +%s.%N)
@@ -627,11 +646,13 @@ print(json.dumps({
 
         # Parse response JSON pentru a extrage metrici Ollama
         echo "$response_json" > "$RESULTS_DIR/${cn}-raw-api-response.json"
-        # Salveaza raspunsul brut LLM
+        # Salveaza raspunsul brut LLM. /api/chat raspunde cu message.content,
+        # /api/generate raspunde cu response - acceptam ambele pt backward compat.
         echo "$response_json" | python3 -c "
 import sys, json
 data = json.loads(sys.stdin.read())
-sys.stdout.write(data.get('response', ''))
+content = data.get('message', {}).get('content', '') or data.get('response', '')
+sys.stdout.write(content)
 " > "$response_file"
 
         local resp_chars resp_is_json

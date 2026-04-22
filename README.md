@@ -154,6 +154,12 @@ Toate cu `temperature=0`, `seed=42` (determinist), KV cache `q8_0` cu FlashAtten
 
 **GARANTIE**: phase_2 din `lib.sh` calculeaza ctx max pentru fiecare candidat folosind VRAM-ul REAL detectat + prompt-ul real, si EXCLUDE din start modelele care n-ar incapea. Raportul NU contine niciodata `PROMPT_TOO_LARGE` - doar modele care au rulat efectiv.
 
+**Format prompt (system + user via `/api/chat`)**: prompt-ul e impartit in **doua fisiere fizice separate**, ca sa fie zero risc de leak:
+- [`prompt_system.txt`](prompt_system.txt) → `system` message: instructiunile complete + Output Format example (cu placeholder EURUSD)
+- [`prompt_user.txt`](prompt_user.txt) → `user` message: override explicit + `<data>...</data>` reala + cerere finala
+
+`lib.sh` citeste cele doua fisiere si construieste request-ul `/api/chat` cu `messages: [{system}, {user}]`. Datele de analizat NU pot ajunge niciodata in system prompt - sunt fizic intr-un alt fisier. Asta evita ca modelele mici/quantizate sa copieze orbeste pair-ul/preturile din exemplul de output (ex: copiau `EURUSD` desi datele sunt pentru `AUDJPY`).
+
 | Model | Size VRAM | KV q8_0 (KB/tok) | 12GB | 16GB | 24GB | 32GB |
 |---|---|---:|:---:|:---:|:---:|:---:|
 | `qwen2.5:3b-instruct-q8_0` (mss-3b) | ~3.8GB | 28 | **DA** | **DA** | **DA** | **DA** |

@@ -108,21 +108,40 @@ for s in summaries:
 # Helpers pentru analiza calitativa raspuns
 # ---------------------------------------------------------------------------
 
-# Field-urile-cheie pe care le asteptam in JSON-ul ideal (din schema prompt_test.txt).
-# Folosit pentru "schema coverage": cate din aceste chei apar in raspuns.
+# Field-urile-cheie pe care le asteptam in JSON-ul ideal (din schema prompt_test.txt
+# - sectiunea "## Output Format"). Folosit pentru "schema coverage".
 EXPECTED_TOP_LEVEL_FIELDS = [
-    "pair", "current_time", "action", "confidence",
-    "analysis_summary", "timeframe_analysis", "trade_setup", "risk_management"
+    "pair",
+    "analysis_timestamp",
+    "overall_bias",
+    "bias_confidence",
+    "market_regime",
+    "session_context",
+    "timeframe_analysis",
+    "contra_analysis",
+    "confluence_factors",
+    "data_quality",
+    "trade",
+    "setup_quality_score",
+    "analysis_summary",
 ]
 
-# Sinonime acceptate (modelele variaza usor in naming)
+# Sinonime acceptate (modelele mici/quantizate variaza usor in naming).
+# Cheile de aici trebuie sa fie EXACT cele din EXPECTED_TOP_LEVEL_FIELDS.
 FIELD_ALIASES = {
-    "trade_setup":      ["trade_setup", "setup", "trade", "trade_recommendation"],
-    "risk_management":  ["risk_management", "risk", "stop_loss", "sl_tp", "levels"],
-    "analysis_summary": ["analysis_summary", "summary", "analysis", "reasoning"],
-    "timeframe_analysis": ["timeframe_analysis", "timeframes", "tf_notes", "timeframe_notes"],
-    "confidence":       ["confidence", "conviction", "confidence_score"],
-    "action":           ["action", "decision", "recommendation"],
+    "pair":                 ["pair", "instrument", "symbol"],
+    "analysis_timestamp":   ["analysis_timestamp", "current_time", "timestamp", "analysis_time"],
+    "overall_bias":         ["overall_bias", "bias", "direction", "trend_bias"],
+    "bias_confidence":      ["bias_confidence", "confidence", "conviction", "confidence_score"],
+    "market_regime":        ["market_regime", "regime", "market_state"],
+    "session_context":      ["session_context", "session", "session_info"],
+    "timeframe_analysis":   ["timeframe_analysis", "timeframes", "tf_notes", "timeframe_notes"],
+    "contra_analysis":      ["contra_analysis", "counter_analysis", "opposing_analysis"],
+    "confluence_factors":   ["confluence_factors", "confluences", "confluence"],
+    "data_quality":         ["data_quality", "data_check", "quality"],
+    "trade":                ["trade", "trade_setup", "setup", "trade_recommendation", "trade_plan"],
+    "setup_quality_score":  ["setup_quality_score", "setup_score", "quality_score", "score"],
+    "analysis_summary":     ["analysis_summary", "summary", "analysis", "reasoning"],
 }
 
 def strip_code_fence(s):
@@ -177,31 +196,47 @@ def response_snippet(text, n=240):
     return cleaned[:n] + ("..." if len(cleaned) > n else "")
 
 def extract_action(parsed):
-    """Returneaza valoarea pentru 'action' / sinonime, sau None."""
+    """Returneaza valoarea pentru 'action' (poate fi top-level sau nested in 'trade')."""
     if not isinstance(parsed, dict):
         return None
+    # Prioritate 1: nested in 'trade' / 'trade_setup' (formatul actual al prompt-ului)
+    for tkey in ("trade", "trade_setup", "setup", "trade_plan"):
+        tv = parsed.get(tkey)
+        if isinstance(tv, dict):
+            for ak in ("action", "decision", "side", "direction"):
+                if ak in tv and tv[ak] is not None:
+                    return str(tv[ak]).lower()
+    # Prioritate 2: top-level
     for k in parsed.keys():
-        if k.lower() in {"action", "decision", "recommendation"}:
+        if k.lower() in {"action", "decision", "recommendation", "overall_bias"}:
             v = parsed[k]
             if isinstance(v, dict):
-                # Uneori e nested: action: {type: "buy"}
                 for k2 in ("type", "value", "side"):
                     if k2 in v:
                         return str(v[k2]).lower()
                 return str(v)[:30]
-            return str(v).lower()
+            return str(v).lower() if v is not None else None
     return None
 
 def extract_confidence(parsed):
+    """Cauta confidence top-level sau bias_confidence (formatul actual)."""
     if not isinstance(parsed, dict):
         return None
     for k in parsed.keys():
-        if k.lower() in {"confidence", "conviction", "confidence_score"}:
+        if k.lower() in {"bias_confidence", "confidence", "conviction", "confidence_score"}:
             v = parsed[k]
+            if v is None:
+                continue
             try:
                 return float(v)
             except Exception:
                 return v
+    # Fallback: setup_quality_score (numeric, sugereaza calitate)
+    if "setup_quality_score" in parsed and parsed["setup_quality_score"] is not None:
+        try:
+            return float(parsed["setup_quality_score"])
+        except Exception:
+            return parsed["setup_quality_score"]
     return None
 
 # ---------------------------------------------------------------------------
