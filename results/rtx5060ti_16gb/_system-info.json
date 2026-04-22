@@ -1,0 +1,15 @@
+{
+  "collected_at": "2026-04-22T04:24:07Z",
+  "target_gpu": "RTX 5060 Ti 16GB",
+  "target_vram_gb": 16,
+  "gpu_key": "rtx5060ti_16gb",
+  "detected_gpu": "NVIDIA GeForce RTX 5060 Ti",
+  "gpu_slug": "rtx5060ti_16gb",
+  "proxy_mode": false,
+  "gpu_total_mb": 16311,
+  "driver_version": "580.126.09",
+  "compute_capability": "12.0",
+  "cpu_model": "AMD EPYC 7763 64-Core Processor",
+  "cpu_cores": 256,
+  "ram_gb": 1007
+}
