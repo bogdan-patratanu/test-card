@@ -1,0 +1,200 @@
+```json
+{
+  "pair": "XAUUSD",
+  "analysis_timestamp": "2026-04-17T23:59:00",
+  "overall_bias": "bearish",
+  "bias_confidence": "high",
+  "market_regime": "trending",
+  "session_context": {
+    "active_session": "off_hours",
+    "session_phase": "close",
+    "day_of_week": "Wednesday",
+    "previous_session_high": 1925.0,
+    "previous_session_low": 1875.0,
+    "pdh": 1930.0,
+    "pdl": 1865.0,
+    "session_high_swept": false,
+    "session_low_swept": true,
+    "session_notes": "Price has swept the previous session low at 1875.0 but not the high."
+  },
+  "timeframe_analysis": {
+    "D1": {
+      "trend": "bearish",
+      "market_structure": {
+        "swing_sequence": "LH/LL",
+        "last_bos": null,
+        "last_choch": {
+          "type": "bearish",
+          "price": 1925.0,
+          "candle_timestamp": "2026-04-17T13:00:00"
+        }
+      },
+      "key_levels": [
+        {
+          "type": "order_block",
+          "price_from": 1890.0,
+          "price_to": 1905.0,
+          "status": "unmitigated",
+          "strength": "strong",
+          "source_timeframe": "D1",
+          "source_timestamp": "2026-04-13T00:00:00"
+        }
+      ],
+      "patterns": [],
+      "wyckoff_phase": "markdown",
+      "notes": "Bearish LH/LL sequence. Unmitigated order block at 1890.0-1905.0 from April 13 displacement."
+    },
+    "H4": {
+      "trend": "bearish",
+      "market_structure": {
+        "swing_sequence": "LH/LL",
+        "last_bos": null,
+        "last_choch": {
+          "type": "bearish",
+          "price": 1925.0,
+          "candle_timestamp": "2026-04-17T13:00:00"
+        }
+      },
+      "key_levels": [
+        {
+          "type": "order_block",
+          "price_from": 1890.0,
+          "price_to": 1905.0,
+          "status": "unmitigated",
+          "strength": "strong",
+          "source_timeframe": "H4",
+          "source_timestamp": "2026-04-13T04:00:00"
+        }
+      ],
+      "patterns": [],
+      "wyckoff_phase": "none",
+      "notes": "Pullback into D1 order block. H4 CHoCH confirmed at 1925.0."
+    },
+    "H1": {
+      "trend": "bearish",
+      "market_structure": {
+        "swing_sequence": "LH/LL",
+        "last_bos": null,
+        "last_choch": {
+          "type": "bearish",
+          "price": 1925.0,
+          "candle_timestamp": "2026-04-17T13:00:00"
+        }
+      },
+      "key_levels": [
+        {
+          "type": "order_block",
+          "price_from": 1890.0,
+          "price_to": 1905.0,
+          "status": "unmitigated",
+          "strength": "strong",
+          "source_timeframe": "H1",
+          "source_timestamp": "2026-04-13T12:00:00"
+        }
+      ],
+      "patterns": [],
+      "wyckoff_phase": "none",
+      "notes": "Structure aligning with H4. Unmitigated order block at 1890.0-1905.0."
+    },
+    "M30": {
+      "trend": "bearish",
+      "market_structure": {
+        "swing_sequence": "LH/LL",
+        "last_bos": null,
+        "last_choch": {
+          "type": "bearish",
+          "price": 1925.0,
+          "candle_timestamp": "2026-04-17T13:00:00"
+        }
+      },
+      "key_levels": [
+        {
+          "type": "order_block",
+          "price_from": 1890.0,
+          "price_to": 1905.0,
+          "status": "unmitigated",
+          "strength": "strong",
+          "source_timeframe": "M30",
+          "source_timestamp": "2026-04-17T12:00:00"
+        }
+      ],
+      "patterns": [],
+      "wyckoff_phase": "none",
+      "notes": "Bearish CHoCH after sweep of 1925.0. Unmitigated order block at 1890.0-1905.0."
+    },
+    "M15": {
+      "trend": "bearish",
+      "market_structure": {
+        "swing_sequence": "LH/LL",
+        "last_bos": null,
+        "last_choch": {
+          "type": "bearish",
+          "price": 1925.0,
+          "candle_timestamp": "2026-04-17T13:00:00"
+        }
+      },
+      "key_levels": [
+        {
+          "type": "order_block",
+          "price_from": 1890.0,
+          "price_to": 1905.0,
+          "status": "unmitigated",
+          "strength": "strong",
+          "source_timeframe": "M15",
+          "source_timestamp": "2026-04-17T12:30:00"
+        }
+      ],
+      "patterns": [],
+      "wyckoff_phase": "none",
+      "notes": "Bearish CHoCH after sweep of 1925.0. Unmitigated order block at 1890.0-1905.0."
+    },
+    "m5_observation": "Last 3 M5 candles show strong bearish displacement from the OB zone with full bodies and minimal wicks. Price is pushing away from 1892.5 entry area with momentum. No signs of exhaustion or re-test yet."
+  },
+  "contra_analysis": {
+    "opposing_direction": "bullish",
+    "contra_strength": "weak",
+    "opposing_structure_signals": "No HH/HL on H4 or D1. Minor LH on M15 was broken by bearish CHoCH.",
+    "threat_levels": [
+      {
+        "type": "demand_zone",
+        "price_from": 1860.0,
+        "price_to": 1870.0,
+        "threat": "Unmitigated H4 demand zone — potential rejection area but well below TP"
+      }
+    ],
+    "liquidity_trap_risk": "Low. The sweep of 1925.0 was clean with immediate displacement. No signs of a deeper trap.",
+    "wyckoff_contra_read": "No evidence of accumulation. Structure remains in markdown phase with strong displacement candles.",
+    "exhaustion_signals": "None. Recent bearish candles maintain strong body-to-range ratios.",
+    "opposing_trade_thesis": "Bulls would need a break above 1905.0 (D1 HL) with displacement to invalidate. Currently no bullish CHoCH on any timeframe above M15.",
+    "verdict": "Primary bearish thesis holds. Opposing evidence is minimal — nearest unmitigated demand at 1860.0 is well below the TP target."
+  },
+  "confluence_factors": [
+    "D1 bearish bias with LH/LL structure",
+    "Price at unmitigated H4 order block (1890.0-1905.0)",
+    "M15 liquidity sweep above 1925.0 followed by bearish CHoCH",
+    "Bearish engulfing at D1 OB on M15",
+    "Off-hours — low liquidity session"
+  ],
+  "data_quality": {
+    "issues_detected": false,
+    "details": null
+  },
+  "trade": {
+    "action": "sell",
+    "counter_trend": false,
+    "trade_horizon": "intraday",
+    "order_type": "market",
+    "entry_status": "active_now",
+    "entry_level": 1892.5,
+    "stop_loss": 1907.3,
+    "take_profit": 1864.0,
+    "risk_reward_ratio": "1:2.0",
+    "invalidation": "Close above 1907.3 invalidates the H4 order block and the M15 sweep structure",
+    "expiry": null,
+    "spread_note": "Adjust entry and SL by the instrument's typical spread before execution",
+    "rejection_reason": null
+  },
+  "setup_quality_score": 8,
+  "analysis_summary": "D1 bearish LH/LL. H4 pullback to unmitigated order block at 1890.0-1905.0. M15 swept liquidity above 1925.0, bearish CHoCH + engulfing at D1 OB. Entry at OB 50% (1892.5), SL above sweep wick with buffer (1907.3). TP at H4 demand zone 1860.0-1870.0. Contra: weak — nearest unmitigated demand well below TP, no bullish CHoCH on any TF."
+}
+```
