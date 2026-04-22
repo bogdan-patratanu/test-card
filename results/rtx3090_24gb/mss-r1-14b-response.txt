@@ -1,0 +1,100 @@
+```json
+{
+  "instrumentAnalysis": {
+    "timeframes": {
+      "D1": {
+        "dataPoints": [
+          {
+            "time": "2026-04-17",
+            "open": 113.98,
+            "high": 114.25,
+            "low": 113.67,
+            "close": 113.72
+          }
+        ]
+      },
+      "H1": {
+        "dataPoints": [
+          {
+            "time": "2026-04-17 16:00",
+            "open": 114.239,
+            "high": 114.249,
+            "low": 114.168,
+            "close": 114.2
+          }
+        ]
+      },
+      "CFD": {
+        "contractSpecifications": {},
+        "marketData": {}
+      },
+      "M5": {
+        "dataPoints": [
+          {
+            "time": "2026-04-17 16:00",
+            "open": 114.2,
+            "high": 114.238,
+            "low": 114.19,
+            "close": 114.2
+          }
+        ]
+      },
+      "M15": {
+        "dataPoints": [
+          {
+            "time": "2026-04-17 16:00",
+            "open": 114.2,
+            "high": 114.238,
+            "low": 114.19,
+            "close": 114.2
+          }
+        ]
+      },
+      "M30": {
+        "dataPoints": [
+          {
+            "time": "2026-04-17 16:00",
+            "open": 114.2,
+            "high": 114.238,
+            "low": 114.19,
+            "close": 114.2
+          }
+        ]
+      },
+      "H4": {
+        "dataPoints": [
+          {
+            "time": "2026-04-17 16:00",
+            "open": 114.2,
+            "high": 114.238,
+            "low": 114.19,
+            "close": 114.2
+          }
+        ]
+      },
+      "D1": {
+        "dataPoints": [
+          {
+            "time": "2026-04-17",
+            "open": 113.98,
+            "high": 114.25,
+            "low": 113.67,
+            "close": 113.72
+          }
+        ]
+      }
+    },
+    "summary": {
+      "overallHigh": 114.25,
+      "overallLow": 113.67,
+      "averagePrice": 113.98,
+      "volume": null,
+      "trend": "Sideways",
+      "volatility": {
+        "high": 0.58,
+        "low": 0.42
+      }
+    }
+  }
+}
+```

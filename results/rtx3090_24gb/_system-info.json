@@ -1,0 +1,15 @@
+{
+  "collected_at": "2026-04-22T04:22:03Z",
+  "target_gpu": "RTX 3090 24GB",
+  "target_vram_gb": 24,
+  "gpu_key": "rtx3090_24gb",
+  "detected_gpu": "NVIDIA GeForce RTX 3090",
+  "gpu_slug": "rtx3090_24gb",
+  "proxy_mode": false,
+  "gpu_total_mb": 24576,
+  "driver_version": "570.181",
+  "compute_capability": "8.6",
+  "cpu_model": "AMD Ryzen 5 3600 6-Core Processor",
+  "cpu_cores": 12,
+  "ram_gb": 31
+}

@@ -1,0 +1,57 @@
+{
+  "instrument": {
+    "name": "SPX",
+    "description": "S&P 500 Index",
+    "type": "Index"
+  },
+  "data_points": [
+    {
+      "timeframe": "D1",
+      "date": "2026-04-17",
+      "open": 113.98,
+      "high": 114.316,
+      "low": 113.543,
+      "close": 113.67
+    },
+    {
+      "timeframe": "H4",
+      "date": "2026-04-17T12:00:00Z",
+      "open": 114.195,
+      "high": 114.316,
+      "low": 114.084,
+      "close": 114.17
+    },
+    {
+      "timeframe": "H1",
+      "date": "2026-04-17T13:00:00Z",
+      "open": 114.158,
+      "high": 114.271,
+      "low": 114.122,
+      "close": 114.19
+    },
+    {
+      "timeframe": "M30",
+      "date": "2026-04-17T13:30:00Z",
+      "open": 114.158,
+      "high": 114.271,
+      "low": 114.122,
+      "close": 114.19
+    },
+    {
+      "timeframe": "M15",
+      "date": "2026-04-17T13:45:00Z",
+      "open": 114.186,
+      "high": 114.271,
+      "low": 114.122,
+      "close": 114.2
+    },
+    {
+      "timeframe": "M5",
+      "date": "2026-04-17T13:15:00Z",
+      "open": 114.095,
+      "high": 114.158,
+      "low": 114.077,
+      "close": 114.122
+    }
+  ]
+}
