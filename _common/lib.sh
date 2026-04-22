@@ -294,22 +294,71 @@ phase_2_select_models() {
     log_info "Phase 2: Selectare modele care incap in ${EFFECTIVE_VRAM_GB}GB VRAM (efectiv)"
     hr
 
-    SELECTED_MODELS=()
+    # Calculam tokens-ul prompt-ului real ca sa pre-filtram modelele.
+    # Daca un model nu poate fitui prompt-ul actual cu ctx adaptiv, il EXCLUDEM
+    # de la inceput (NU lasam phase_4 sa marcheze PROMPT_TOO_LARGE).
+    # Filozofia: toate modelele selectate VOR rula efectiv si vor produce metrici.
+    local prompt_file="prompt_test.txt"
+    local prompt_tokens_est=0 needed_min=0
+    if [[ -f "$prompt_file" ]]; then
+        local prompt_chars
+        prompt_chars=$(wc -c < "$prompt_file")
+        prompt_tokens_est=$(( prompt_chars / 3 ))
+        needed_min=$(( prompt_tokens_est + MIN_RESPONSE_TOKENS_BUFFER ))
+        log "Prompt: $prompt_chars caractere, ~$prompt_tokens_est tokens"
+        log "ctx minim necesar (prompt + ${MIN_RESPONSE_TOKENS_BUFFER} buffer): $needed_min"
+        log "VRAM detectat real: ${DETECTED_VRAM_MB}MB, safety: ${VRAM_SAFETY_MARGIN_MB}MB"
+    else
+        log_warn "$prompt_file lipseste -> sar peste pre-filtru ctx (se valideaza in phase_4)"
+    fi
+
+    # Pasul 1: candidati pe baza min_vram_gb (filtru grossier)
+    local candidates=()
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
-        SELECTED_MODELS+=("$line")
+        candidates+=("$line")
     done < <(select_models_for_vram "$EFFECTIVE_VRAM_GB")
 
-    log "Modele care vor fi rulate (${#SELECTED_MODELS[@]}):"
+    # Pasul 2: filtru fin - calc actual ctx fits cu DETECTED_VRAM real + KV f16/q8 efectiv
+    SELECTED_MODELS=()
+    local skipped_too_large=()
     local m
+    for m in "${candidates[@]}"; do
+        IFS='|' read -r mf cn base size_mb kv_kb min_vram <<< "$m"
+        if (( needed_min > 0 )); then
+            # Pe Pascal KV cache e f16 (dublu fata de q8_0) - vezi phase_1
+            local kv_eff=$kv_kb
+            if [[ "${EFFECTIVE_KV_CACHE:-q8_0}" == "f16" ]]; then
+                kv_eff=$(( kv_kb * 2 ))
+            fi
+            local max_ctx
+            max_ctx=$(compute_max_ctx "$size_mb" "$kv_eff" "$DETECTED_VRAM_MB" "$VRAM_SAFETY_MARGIN_MB")
+            if (( max_ctx < needed_min )); then
+                skipped_too_large+=("$cn (max_ctx=$max_ctx, needed=$needed_min, model=${size_mb}MB)")
+                continue
+            fi
+        fi
+        SELECTED_MODELS+=("$m")
+    done
+
+    log "Modele care VOR rula garantat (${#SELECTED_MODELS[@]}):"
     for m in "${SELECTED_MODELS[@]}"; do
-        # Format nou: modelfile|cn|base|model_size_mb|kv_kb_per_tok|min_vram_gb
         IFS='|' read -r _mf _cn _base _size_mb _kv_kb _min_vram <<< "$m"
         log "  - $_cn  (base: $_base, model=${_size_mb}MB, KV=${_kv_kb}KB/tok @ q8_0, min ${_min_vram}GB)"
     done
 
+    if (( ${#skipped_too_large[@]} > 0 )); then
+        log_warn "Excluse din start (prompt prea mare pentru aceste modele pe acest GPU):"
+        local s
+        for s in "${skipped_too_large[@]}"; do
+            log_warn "  - $s"
+        done
+        log_warn "Acestea NU vor aparea in raport. Pentru a le testa: GPU cu mai mult VRAM sau prompt mai mic."
+    fi
+
     if (( ${#SELECTED_MODELS[@]} == 0 )); then
-        log_err "Nu exista modele care sa incapa in ${EFFECTIVE_VRAM_GB}GB. Abandon."
+        log_err "Nu exista modele care sa incapa cu prompt-ul de $prompt_tokens_est tokens in ${DETECTED_VRAM_MB}MB VRAM."
+        log_err "Solutii: prompt mai scurt, GPU cu mai mult VRAM, sau adauga un model si mai mic in model_tiers.sh"
         exit 1
     fi
 }
@@ -415,6 +464,28 @@ phase_4_run_benchmarks() {
         log_err "Lipseste $prompt_file in directorul curent"
         exit 1
     fi
+
+    # Cleanup metrics ORFANE: fisiere pentru modele care nu mai sunt selectate
+    # (de ex. dupa update model_tiers.sh). Le stergem ca summary.json sa nu contina
+    # rezultate de la modele invalide din rulari anterioare.
+    local selected_cn_list=""
+    local m
+    for m in "${SELECTED_MODELS[@]}"; do
+        IFS='|' read -r _mf cn _rest <<< "$m"
+        selected_cn_list+="${cn} "
+    done
+    local mfile cn_orphan
+    for mfile in "$RESULTS_DIR"/*-metrics.json; do
+        [[ -f "$mfile" ]] || continue
+        cn_orphan=$(basename "$mfile" -metrics.json)
+        if [[ ! " $selected_cn_list " =~ " $cn_orphan " ]]; then
+            log_warn "Cleanup orfan: $(basename "$mfile") (model nu mai e in lista actuala)"
+            rm -f "$mfile" \
+                  "$RESULTS_DIR/${cn_orphan}-response.txt" \
+                  "$RESULTS_DIR/${cn_orphan}-raw-api-response.json" \
+                  "$RESULTS_DIR/${cn_orphan}-nvsmi.csv"
+        fi
+    done
     local prompt_chars
     prompt_chars=$(wc -c < "$prompt_file")
     # Estimare conservatoare HIGH: chars/3 (Qwen tokenizer pe JSON dens da 2.8-3.2 chars/tok).
@@ -463,14 +534,12 @@ phase_4_run_benchmarks() {
         max_ctx_fits=$(compute_max_ctx "$model_size_mb" "$kv_kb_effective" "$DETECTED_VRAM_MB" "$VRAM_SAFETY_MARGIN_MB")
         log "  Max ctx HW (VRAM ${DETECTED_VRAM_MB}MB - model ${model_size_mb}MB - safety ${VRAM_SAFETY_MARGIN_MB}MB) = ${max_ctx_fits}"
 
-        # Verifica daca prompt-ul (+ buffer raspuns) intra
+        # Sanity check (nu ar trebui sa apara - phase_2 a pre-filtrat).
+        # Daca totusi ajunge aici cu max_ctx insuficient, e o eroare interna - log si skip
+        # fara a scrie metrics, ca raportul sa nu contina PROMPT_TOO_LARGE.
         if (( max_ctx_fits < needed_ctx_min )); then
-            log_err "PROMPT TOO LARGE: ctx max = $max_ctx_fits < ctx minim necesar = $needed_ctx_min"
-            log_err "  Acest GPU nu poate procesa prompt-ul curent cu acest model."
-            log_err "  Solutii: prompt mai mic, model mai mic, sau GPU cu mai mult VRAM."
-            write_failed_metrics "$metrics_file" "$cn" "$base" "$min_vram" "$model_size_mb" "$kv_kb_per_tok" \
-                "PROMPT_TOO_LARGE" "\"max_ctx=$max_ctx_fits, needed=$needed_ctx_min, prompt_tokens_est=$PROMPT_TOKENS_EST\"" \
-                "0" "" "$max_ctx_fits" "0"
+            log_err "INTERN: $cn ar fi trebuit pre-filtrat in phase_2 (max=$max_ctx_fits < needed=$needed_ctx_min)"
+            log_err "  Skip silentios - verifica logica phase_2_select_models"
             continue
         fi
 
@@ -856,7 +925,7 @@ lines.append("- Marimea modelului in VRAM (din arhitectura)")
 lines.append("- KV cache per token (din arhitectura, la quantization q8_0)")
 lines.append("- Safety margin pentru activations + CUDA workspace")
 lines.append("")
-lines.append("Daca `ctx_max_fits < prompt_tokens + buffer raspuns`, modelul e marcat **PROMPT_TOO_LARGE** (cardul nu poate procesa prompt-ul tau cu acest model).")
+lines.append("Modelele care nu ar fi avut ctx suficient pentru prompt-ul tau au fost EXCLUSE din start in phase_2 (NU apar in raport ca PROMPT_TOO_LARGE).")
 lines.append("")
 lines.append("## Per-model metrics")
 lines.append("")

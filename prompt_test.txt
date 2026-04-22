@@ -30,7 +30,7 @@ Your single purpose: given OHLC data for a trading pair, output a structured JSO
 You receive a JSON object with the following structure:
 ```json
 {
-  "pair": "AUDJPY",
+  "pair": "EURUSD",
   "current_time": "2026-04-14T16:30:00",
   "timeframes": {
     "D1":  [["2026-04-01 00:00:00", 1.0800, 1.0850, 1.0780, 1.0830], ...],
@@ -292,7 +292,7 @@ Always output a single JSON object. No markdown wrapping, no code fences, no com
 ### Full Output (When a Trade Exists)
 ```json
 {
-  "pair": "AUDJPY",
+  "pair": "EURUSD",
   "analysis_timestamp": "2026-04-14T16:30:00",
   "overall_bias": "bullish",
   "bias_confidence": "high",
@@ -492,7 +492,7 @@ Always output a single JSON object. No markdown wrapping, no code fences, no com
 When the action is `no_action`, skip the detailed per-timeframe breakdown. Provide the overall assessment and analysis summary only.
 ```json
 {
-  "pair": "AUDJPY",
+  "pair": "EURUSD",
   "analysis_timestamp": "2026-04-14T16:30:00",
   "overall_bias": "neutral",
   "bias_confidence": "low",

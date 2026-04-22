@@ -152,24 +152,36 @@ Toate cu `temperature=0`, `seed=42` (determinist), KV cache `q8_0` cu FlashAtten
 - Verificam ca `prompt_tokens + buffer_raspuns <= max_ctx_predicted`. Daca nu → status `PROMPT_TOO_LARGE`, modelul e marcat ca neutilizabil pe acest card cu acest prompt.
 - Asa fiecare card foloseste TOT VRAM-ul lui, iar comparatia e corecta: nu compari A2000 12GB cu V100 32GB la acelasi ctx mic, ci vezi ce poate fiecare la maximul lui.
 
-| Model | Size disk | KV q8_0 (KB/tok) | 12GB | 16GB | 24GB | 32GB |
+**GARANTIE**: phase_2 din `lib.sh` calculeaza ctx max pentru fiecare candidat folosind VRAM-ul REAL detectat + prompt-ul real, si EXCLUDE din start modelele care n-ar incapea. Raportul NU contine niciodata `PROMPT_TOO_LARGE` - doar modele care au rulat efectiv.
+
+| Model | Size VRAM | KV q8_0 (KB/tok) | 12GB | 16GB | 24GB | 32GB |
 |---|---|---:|:---:|:---:|:---:|:---:|
-| `deepseek-r1:14b` | ~9GB | 96 | partial† | DA | DA | DA |
-| `qwen2.5:32b-instruct-q3_K_S` | ~14GB | 128 | NU | DA | DA | DA |
-| `qwen2.5:14b-instruct-q8_0` | ~15GB | 96 | NU | partial† | DA | DA |
-| `qwen2.5:32b-instruct-q4_K_M` | ~19GB | 128 | NU | NU | DA | DA |
-| `deepseek-r1:32b` | ~19GB | 128 | NU | NU | DA | DA |
-| `qwq:32b` | ~19GB | 128 | NU | NU | DA | DA |
+| `qwen2.5:3b-instruct-q8_0` (mss-3b) | ~3.8GB | 28 | **DA** | **DA** | **DA** | **DA** |
+| `qwen2.5:7b-instruct-q8_0` (mss-7b) | ~8.5GB | 28 | **DA** | **DA** | **DA** | **DA** |
+| `qwen2.5:14b-instruct-q4_K_M` (mss-14b-q4) | ~9.5GB | 96 | NU | **DA** | **DA** | **DA** |
+| `deepseek-r1:14b` (mss-r1-14b, q4) | ~12GB | 96 | NU | NU | DA | DA |
+| `qwen2.5:14b-instruct-q8_0` (mss-14b) | ~18GB | 96 | NU | NU | DA | DA |
+| `qwen2.5:32b-instruct-q3_K_S` (mss-32b-q3) | ~17GB | 128 | NU | NU | DA | DA |
+| `qwen2.5:32b-instruct-q4_K_M` (mss-32b-q4) | ~17.5GB | 128 | NU | NU | DA | DA |
+| `deepseek-r1:32b` (mss-r1-32b) | ~17.5GB | 128 | NU | NU | DA | DA |
+| `qwq:32b` (mss-qwq-32b) | ~17.5GB | 128 | NU | NU | DA | DA |
 
-† **partial** = modelul incape dar ctx maxim e mai mic decat prompt-ul actual (~32-35K tokens) → status `PROMPT_TOO_LARGE`.
+**Strategia "common models"** (esentiala pentru decizia de cumparare):
+- `mss-3b` si `mss-7b` ruleaza pe **TOATE placile** (12GB-32GB) → comparatie completa same-model
+- `mss-14b-q4` ruleaza pe **16GB+** → comparatie 16/24/32
 
-Filtrarea initiala se face in [_common/model_tiers.sh](_common/model_tiers.sh). Verificarea finala (ctx fits) se face dinamic la runtime in `lib.sh::compute_max_ctx`.
+Asa raspunzi la "merita sa dau bani pe placa mai buna?" - daca pe `mss-7b` 3090 raspunde in 30s si V100 in 28s, V100 nu merita 1100$. Daca diferenta e 10s vs 30s, atunci diferenta de pret se justifica.
 
-### Estimari timp benchmark per GPU
+Logica filtrare:
+1. **Filtru `min_vram_gb`** in [_common/model_tiers.sh](_common/model_tiers.sh) - exclus rapid pe baza VRAM nominal
+2. **Filtru fin in phase_2** ([_common/lib.sh](_common/lib.sh)) - calc actual `compute_max_ctx` cu VRAM real detectat. Modelele care n-ar incapea sunt logate ca **excluse** dar NU apar in raport ca failures.
 
-- **16GB GPU** (RTX 5060 Ti, RTX 5000 via T4): 3 modele = **~30-60 min**
-- **24GB GPU** (RTX 3090): 6 modele = **~60-120 min**
-- **32GB GPU** (V100 32GB): 6 modele = **~60-120 min**
+### Estimari timp benchmark per GPU (modele care VOR rula efectiv)
+
+- **12GB GPU** (A2000): 2 modele (mss-3b + mss-7b) = **~10-25 min**
+- **16GB GPU** (RTX 5060 Ti, RTX 5000 via T4/A4000): 3 modele = **~20-45 min**
+- **24GB GPU** (RTX 3090): 9 modele = **~90-180 min**
+- **32GB GPU** (V100 32GB): 9 modele = **~90-180 min**
 
 ---
 
